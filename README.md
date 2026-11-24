@@ -38,4 +38,4 @@ npm run test:browser
 
 Os testes de navegador usam o Google Chrome instalado e a compilação da pasta `dist/`. Para usar o Edge, configure `MIXBONIX_CANAL_BROWSER` como `msedge`. Os testes usam dados fictícios. Para conferir o relatório real localmente, configure `MIXBONIX_EXEMPLO` com o caminho do Excel de referência e execute `npm test`.
 
-Publique o conteúdo de `dist/` no serviço de hospedagem estática. Use `npm run preview` para conferir a compilação localmente. A autenticação, se necessária, pode ser configurada no serviço de hospedagem.
+O GitHub Pages publica o conteúdo de `dist/` após cada envio à branch `main`. Em **Settings → Pages**, a origem da publicação deve ser **GitHub Actions**. Use `npm run preview` para conferir a compilação localmente.
