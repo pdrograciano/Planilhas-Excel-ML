@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { baixarArquivo, nomeBaseGerado, nomeDaVersao, processarArquivo, renumerarArquivoPorItens } from './formatador/arquivo.ts'
+import { baixarArquivo, nomeBaseGerado, nomeDaVersao, processarArquivo, renumerarArquivoPorItens, tipoExcel } from './formatador/arquivo.ts'
 import { excluirDoHistorico, guardarNoHistorico, guardarNumeracaoPorItens, identificadorHistorico, limparHistorico } from './historico.ts'
 import type { carregarHistorico, EntradaHistorico } from './historico.ts'
 
@@ -216,7 +216,7 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
       <main className="workspace">
         <div className="intro">
           <h1>MIXBONIX GERATOR</h1>
-          <p>Converta o Excel de vendas do Mercado Livre para o modelo de pedidos da MIXBONIX.</p>
+          <p>Conversor de Excel de vendas do Mercado Livre para o modelo da MIXBONIX.</p>
         </div>
 
         <section className="panel" aria-labelledby="titulo-formatar">
@@ -253,7 +253,7 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
             <p className="dropzone-caption">Formato aceito .xlsx</p>
             <input
               type="file"
-              accept=".xlsx"
+              accept={'.xlsx,' + tipoExcel}
               hidden
               ref={input}
               onChange={(evento) => {
@@ -293,6 +293,14 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
             </div>
           )}
 
+          <div className="process-actions">
+            <button className={'button ' + (resultado ? 'button-outline' : 'button-primary')} type="button" disabled={!arquivo || processando} onClick={gerar}>
+              {processando ? <LoaderCircle className="spinner" size={18} aria-hidden="true" /> : <WandSparkles size={18} aria-hidden="true" />}
+              {processando ? 'Formatando planilhas…' : 'Gerar planilhas'}
+            </button>
+          </div>
+          <div className="sr-only" role="status">{processando ? 'Processando o arquivo selecionado.' : ''}</div>
+
           {resultado && (
             <div className="result">
               <div className="result-copy" role="status">
@@ -307,14 +315,6 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
               </div>
             </div>
           )}
-
-          <div className="process-actions">
-            <button className={'button ' + (resultado ? 'button-outline' : 'button-primary')} type="button" disabled={!arquivo || processando} onClick={gerar}>
-              {processando ? <LoaderCircle className="spinner" size={18} aria-hidden="true" /> : <WandSparkles size={18} aria-hidden="true" />}
-              {processando ? 'Formatando planilhas…' : 'Gerar planilhas'}
-            </button>
-          </div>
-          <div className="sr-only" role="status">{processando ? 'Processando o arquivo selecionado.' : ''}</div>
         </section>
 
         <section className="panel history-panel" aria-labelledby="titulo-historico">
@@ -388,6 +388,12 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
           )}
         </section>
       </main>
+      <footer className="site-footer">
+        <div className="site-footer-inner">
+          <small>© {new Date().getFullYear()} MIXBONIX. Todos os direitos reservados.</small>
+          <small>Desenvolvido por Pedro Graciano.</small>
+        </div>
+      </footer>
     </>
   )
 }

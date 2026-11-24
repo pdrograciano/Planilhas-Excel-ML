@@ -45,6 +45,10 @@ test('formata, recarrega, baixa os arquivos e isola o histórico por guia', { ti
   assert.equal(await pagina.title(), 'MIXBONIX GERATOR')
   const titulo = pagina.getByRole('heading', { name: 'MIXBONIX GERATOR', level: 1 })
   await titulo.waitFor()
+  await pagina.getByText('Conversor de Excel de vendas do Mercado Livre para o modelo da MIXBONIX.', { exact: true }).waitFor()
+  const rodape = pagina.getByRole('contentinfo')
+  assert.match(await rodape.innerText(), /MIXBONIX\. Todos os direitos reservados\./)
+  await rodape.getByText('Desenvolvido por Pedro Graciano.', { exact: true }).waitFor()
   assert.equal(await titulo.evaluate(async (elemento) => {
     await document.fonts.ready
     const estilo = getComputedStyle(elemento)
@@ -65,6 +69,7 @@ test('formata, recarrega, baixa os arquivos e isola o histórico por guia', { ti
   await pagina.keyboard.press('Enter')
   await tema.locator('.lucide-moon').waitFor()
   assert.equal(await tema.getAttribute('aria-pressed'), 'true')
+  assert.equal(await pagina.locator('meta[name="theme-color"]').getAttribute('content'), '#282a36')
   assert.match(await logo.getAttribute('src'), /mixbonix-escuro.*\.png$/)
   await logo.evaluate((imagem) => imagem.decode())
   await pagina.reload()
@@ -217,8 +222,10 @@ test('funciona no celular e conserva os downloads quando o armazenamento falha',
     }
   })
   await pagina.goto(url)
-  await pagina.getByRole('button', { name: 'Modo escuro' }).click()
+  await pagina.getByRole('button', { name: 'Modo escuro' }).tap()
+  assert.equal(await pagina.getByText('Arraste e solte a planilha aqui', { exact: true }).isVisible(), false)
   const entrada = pagina.locator('input[type=file]')
+  assert.match(await entrada.getAttribute('accept'), /spreadsheetml\.sheet/)
   await entrada.setInputFiles({ name: 'arquivo.csv', mimeType: 'text/csv', buffer: Buffer.from('inválido') })
   await pagina.getByRole('alert').filter({ hasText: 'formato .xlsx' }).waitFor()
 
@@ -233,16 +240,12 @@ test('funciona no celular e conserva os downloads quando o armazenamento falha',
 
   const original = await exemploFicticio()
   const nome = 'Vendas-Mercado-Livre-relatorio-ficticio-com-nome-comprido-2026-11-23.xlsx'
-  const arrastado = await pagina.evaluateHandle(({ bytes, nome }) => {
-    const dados = new DataTransfer()
-    dados.items.add(new File([Uint8Array.from(bytes)], nome))
-    return dados
-  }, { bytes: [...original], nome })
-  const area = pagina.locator('.dropzone')
-  await area.dispatchEvent('dragenter', { dataTransfer: arrastado })
-  await pagina.getByText('Solte a planilha aqui').waitFor()
-  await area.dispatchEvent('drop', { dataTransfer: arrastado })
-  await gerar.click()
+  const [seletor] = await Promise.all([
+    pagina.waitForEvent('filechooser'),
+    pagina.getByRole('button', { name: 'Trocar arquivo', exact: true }).tap(),
+  ])
+  await seletor.setFiles({ name: nome, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: original })
+  await gerar.tap()
   await pagina.getByText('O navegador não conseguiu guardar estes arquivos.', { exact: false }).waitFor()
   const historico = abrirHistorico(pagina)
   assert.equal(await historico.getByRole('listitem').count(), 1)
