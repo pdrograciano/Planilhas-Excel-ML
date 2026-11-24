@@ -17,10 +17,10 @@ Abra o endereço que o Vite imprimir no terminal. No Windows, se o PowerShell bl
 
 1. No Mercado Livre, baixe o relatório `.xlsx` com a aba **Vendas BR**.
 2. Arraste o arquivo para a área de seleção ou clique em **Selecionar arquivo**.
-3. Clique em **Gerar planilhas** e escolha **Arquivo Formatado** para manter a sequência do relatório ou **Arquivo Formatado por Itens** para agrupar pela coluna **ITEM** de A a Z. Em ambas as versões, a coluna **ORDEM** começa em 1 e segue a sequência das linhas exibidas.
+3. Clique em **Gerar planilhas** e escolha **Arquivo Formatado** para manter a sequência do relatório ou **Arquivo Ordenado por Itens** para agrupar pela coluna **ITEM** de A a Z. Em ambas as versões, a coluna **ORDEM** começa em 1 e segue a sequência das linhas exibidas.
 4. No **Histórico**, use **Arquivo original ML** para baixar o arquivo enviado ou selecione uma das versões formatadas. Use a lixeira para apagar uma entrada ou **Limpar histórico** para apagar todas as entradas da guia.
 
-As duas versões usam a data e a hora locais da geração. O **Arquivo Formatado** usa o nome `24-11-2026_12-34-56_Formatado_MercadoLivre_mixbonixgerator.xlsx` e o **Arquivo Formatado por Itens** usa `24-11-2026_12-34-56_PorItens_MercadoLivre_mixbonixgerator.xlsx`.
+As duas versões usam a data e a hora locais da geração. O **Arquivo Formatado** usa o nome `24-11-2026_12-34-56_Formatado_MercadoLivre_mixbonixgerator.xlsx` e o **Arquivo Ordenado por Itens** usa `24-11-2026_12-34-56_PorItens_MercadoLivre_mixbonixgerator.xlsx`.
 
 Quando o Mercado Livre registra um pacote com vários produtos, a coluna **Título do anúncio** mostra **(X pedidos feitos)** na linha do comprador, seguido das linhas dos produtos. A versão por itens ordena o bloco pelo primeiro item e mantém as linhas juntas. A coluna **ORDEM** numera as linhas dos produtos.
 

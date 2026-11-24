@@ -105,7 +105,7 @@ test('formata, recarrega, baixa os arquivos e isola o histórico por guia', { ti
   }
   const resultado = pagina.locator('.result')
   const formato = { name: 'Arquivo Formatado', exact: true }
-  const porItem = { name: 'Arquivo Formatado por Itens', exact: true }
+  const porItem = { name: 'Arquivo Ordenado por Itens', exact: true }
   await pagina.getByText('6 linhas de pedidos.').waitFor()
   const primeira = await baixar(pagina, resultado.getByRole('button', formato))
   const primeiraPorItem = await baixar(pagina, resultado.getByRole('button', porItem))
@@ -252,7 +252,7 @@ test('funciona no celular e conserva os downloads quando o armazenamento falha',
   assert.equal(await pagina.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
   assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo original ML', exact: true }))).bytes.equals(original), true)
   assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo Formatado', exact: true }))).bytes.length > 0, true)
-  assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo Formatado por Itens', exact: true }))).bytes.length > 0, true)
+  assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo Ordenado por Itens', exact: true }))).bytes.length > 0, true)
   await entrada.setInputFiles({ name: 'outro-inválido.xlsx', mimeType: 'text/plain', buffer: Buffer.from('inválido') })
   await gerar.click()
   await pagina.getByRole('alert').waitFor()

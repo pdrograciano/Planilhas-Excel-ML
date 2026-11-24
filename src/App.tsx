@@ -48,7 +48,7 @@ function DownloadFormatada({ entrada, resultado = false }: { entrada: EntradaHis
       if (entrada.salva) void guardarNumeracaoPorItens(entrada.id, arquivo)
       baixarArquivo(arquivo, nome)
     } catch (falha) {
-      setErro(falha instanceof Error ? falha.message : 'Não foi possível baixar o Arquivo Formatado por Itens.')
+      setErro(falha instanceof Error ? falha.message : 'Não foi possível baixar o Arquivo Ordenado por Itens.')
     } finally {
       setCorrigindo(false)
     }
@@ -72,7 +72,7 @@ function DownloadFormatada({ entrada, resultado = false }: { entrada: EntradaHis
           aria-busy={corrigindo}
         >
           {corrigindo ? <LoaderCircle className="spinner" size={17} aria-hidden="true" /> : <Download size={17} aria-hidden="true" />}
-          Arquivo Formatado por Itens
+          Arquivo Ordenado por Itens
         </button>
       )}
       {erro && <p className="notice notice-error" role="alert">{erro}</p>}
