@@ -1,5 +1,6 @@
 import { PDFDocument, PrintScaling, StandardFonts } from 'pdf-lib'
 import type { PDFFont } from 'pdf-lib'
+import { quebrarLinhas, textoImprimivel } from '../pdf/texto.ts'
 
 interface ProdutoEtiqueta {
   nome: string
@@ -28,47 +29,11 @@ const margem = 3.5
 const larguraTexto = largura - 2 * margem
 const quantidades = new Intl.NumberFormat('pt-BR')
 
-function textoImprimivel(texto: string, caracteres: Set<number>): string {
-  return [...texto.normalize('NFC').replace(/\s+/g, ' ').trim()].map((letra) => {
-    if (caracteres.has(letra.codePointAt(0)!)) return letra
-    const equivalente = letra.normalize('NFKD').replace(/\p{M}/gu, '')
-    return equivalente && [...equivalente].every((parte) => caracteres.has(parte.codePointAt(0)!)) ? equivalente : '?'
-  }).join('')
-}
-
-function quebrarLinhas(texto: string, fonte: PDFFont, tamanho: number): string[] {
-  const linhas: string[] = []
-  let linha = ''
-  const cabe = (valor: string) => fonte.widthOfTextAtSize(valor, tamanho) <= larguraTexto
-  for (const palavra of texto.split(' ')) {
-    const adicionada = linha ? linha + ' ' + palavra : palavra
-    if (cabe(adicionada)) {
-      linha = adicionada
-      continue
-    }
-    if (cabe(palavra)) {
-      if (linha) linhas.push(linha)
-      linha = palavra
-      continue
-    }
-    if (linha) linha += ' '
-    for (const letra of palavra) {
-      if (linha && !cabe(linha + letra)) {
-        linhas.push(linha.trimEnd())
-        linha = ''
-      }
-      linha += letra
-    }
-  }
-  if (linha) linhas.push(linha)
-  return linhas
-}
-
 function comporEtiqueta(etiqueta: EtiquetaEnvio, normal: PDFFont, negrito: PDFFont, caracteres: Set<number>, escala: number) {
   const trecho = (texto: string, fonte: PDFFont, pontos: number, intervalo = 0, divisoria = false): Trecho => {
     const tamanho = Math.max(4.5, pontos * escala)
     return {
-      linhas: quebrarLinhas(textoImprimivel(texto, caracteres), fonte, tamanho),
+      linhas: quebrarLinhas(textoImprimivel(texto, caracteres), fonte, tamanho, larguraTexto),
       fonte, tamanho, entrelinha: tamanho * (1.05 + .07 * escala), intervalo: intervalo * escala, divisoria,
     }
   }

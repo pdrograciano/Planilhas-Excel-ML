@@ -28,8 +28,8 @@ Quando o Mercado Livre registra um pacote com vários produtos, a coluna **Títu
 
 1. Abra **Conferência de pedidos do dia** pelo menu no celular ou pelas abas no computador. Selecione ou arraste os PDFs das etiquetas do Mercado Livre. Use **Adicionar PDFs** para trazer novos arquivos para a mesma conferência. Envios repetidos contam uma vez, e as validações anteriores continuam no lote.
 2. O site lê os QR codes e os destinatários no aparelho. Para ver os produtos e quantidades, use uma planilha correspondente do histórico ou carregue a planilha de vendas original do lote. A associação usa o identificador do envio.
-3. Abra a câmera, permita o acesso e aponte para o QR de cada etiqueta. Compare o destinatário e os itens exibidos com o pacote. Leituras repetidas não aumentam o total.
-4. Use **Finalizar** para ver os envios identificados, pendentes e o total de leituras que não puderam ser associadas ao PDF.
+3. Abra a câmera, permita o acesso e aponte para o QR de cada etiqueta. Compare o destinatário e os itens exibidos com o pacote. A câmera dispara sons distintos para envios identificados, desconhecidos e repetidos. Leituras repetidas não aumentam o total.
+4. Use **Finalizar** para ver os envios identificados, pendentes e o total de leituras que não puderam ser associadas ao PDF. O site baixa um relatório em PDF no formato A4 para arquivar ou imprimir. Use **Baixar relatório em PDF** para baixar outra cópia.
 
 O ícone de sol ou lua no canto superior direito alterna o tema do site. A preferência é lembrada no navegador.
 

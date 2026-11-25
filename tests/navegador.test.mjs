@@ -59,6 +59,18 @@ async function comNavegador(executar) {
 test('reúne PDFs, preserva os bipes ao adicionar etiquetas e usa o menu no celular', { timeout: 80_000 }, () => comNavegador(async (navegador, url) => {
   const pagina = await navegador.newPage({ viewport: { width: 375, height: 750 }, isMobile: true, hasTouch: true })
   await pagina.addInitScript(() => {
+    window.frequenciasBipadas = []
+    window.AudioContext = class extends window.AudioContext {
+      createOscillator() {
+        const oscilador = super.createOscillator()
+        const definir = oscilador.frequency.setValueAtTime.bind(oscilador.frequency)
+        oscilador.frequency.setValueAtTime = (frequencia, tempo) => {
+          window.frequenciasBipadas.push(frequencia)
+          return definir(frequencia, tempo)
+        }
+        return oscilador
+      }
+    }
     navigator.mediaDevices.getUserMedia = async () => {
       const canvas = document.createElement('canvas')
       canvas.width = canvas.height = 640
@@ -131,6 +143,7 @@ test('reúne PDFs, preserva os bipes ao adicionar etiquetas e usa o menu no celu
   await pagina.evaluate((imagem) => window.mostrarQr(imagem), imagens[0])
   await painel.getByText('Pedido já identificado', { exact: true }).waitFor()
   await painel.getByText('1 de 2 envios bipados', { exact: true }).waitFor()
+  assert.deepEqual(await pagina.evaluate(() => window.frequenciasBipadas), [880, 1175, 330, 660, 660])
 
   await painel.getByRole('button', { name: 'Fechar câmera' }).click()
   const dataTransfer = await pagina.evaluateHandle((bytes) => {
@@ -147,7 +160,14 @@ test('reúne PDFs, preserva os bipes ao adicionar etiquetas e usa o menu no celu
   await painel.getByText('2 PDFs adicionados').waitFor()
   await painel.getByText('1 de 3 envios bipados', { exact: true }).waitFor()
 
-  await painel.getByRole('button', { name: 'Finalizar' }).click()
+  const finalizar = painel.getByRole('button', { name: 'Finalizar' })
+  const pdfParcial = await baixar(pagina, finalizar)
+  assert.match(pdfParcial.nome, /^Conferencia_MIXBONIX_\d{2}-\d{2}-\d{4}_\d{2}-\d{2}-\d{2}\.pdf$/)
+  const relatorio = await PDFDocument.load(pdfParcial.bytes)
+  assert.equal(relatorio.getTitle(), 'Relatório de conferência - MIXBONIX ORDER')
+  const { width, height } = relatorio.getPage(0).getSize()
+  assert.ok(Math.abs(width * 25.4 / 72 - 210) < .01)
+  assert.ok(Math.abs(height * 25.4 / 72 - 297) < .01)
   const resumo = painel.getByRole('region', { name: 'Resultado da conferência' })
   await resumo.getByText('Cliente da Silva').waitFor()
   assert.equal(await resumo.getByText('Pendente', { exact: true }).count(), 2)
@@ -159,9 +179,13 @@ test('reúne PDFs, preserva os bipes ao adicionar etiquetas e usa o menu no celu
   await painel.getByText('2 de 3 envios bipados', { exact: true }).waitFor({ timeout: 8000 })
   await pagina.evaluate((imagem) => window.mostrarQr(imagem), imagens[2])
   await painel.getByText('3 de 3 envios bipados', { exact: true }).waitFor({ timeout: 8000 })
-  await painel.getByRole('button', { name: 'Finalizar' }).click()
+  const pdfCompleto = await baixar(pagina, finalizar)
   await resumo.getByText('Todos os envios do lote foram bipados.').waitFor()
   assert.equal(await resumo.getByText('Identificado', { exact: true }).count(), 3)
+  assert.equal(pdfCompleto.bytes.equals(pdfParcial.bytes), false)
+  const repetido = await baixar(pagina, resumo.getByRole('button', { name: 'Baixar relatório em PDF' }))
+  assert.equal(repetido.nome, pdfCompleto.nome)
+  assert.equal(repetido.bytes.equals(pdfCompleto.bytes), true)
   assert.equal(await pagina.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
 
   const abaPlanilhas = pagina.getByRole('tab', { name: 'Organização de pedidos e planilhas' })

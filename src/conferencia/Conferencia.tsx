@@ -1,20 +1,28 @@
-import { Camera, CheckCircle2, ChevronDown, CircleAlert, ClipboardCheck, FileText, FolderOpen, LoaderCircle, ScanLine, Trash2, UploadCloud } from 'lucide-react'
+import { Camera, CheckCircle2, ChevronDown, CircleAlert, ClipboardCheck, Download, FileText, FolderOpen, LoaderCircle, ScanLine, Trash2, UploadCloud } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { lerEnviosDaPlanilha, tipoExcel } from '../formatador/arquivo.ts'
+import { baixarArquivo, lerEnviosDaPlanilha, tipoExcel } from '../formatador/arquivo.ts'
 import type { EntradaHistorico } from '../historico.ts'
 import { CameraConferencia } from './CameraConferencia.tsx'
+import { prepararSom, tocarBipe } from './bipes.ts'
+import type { TipoBipe } from './bipes.ts'
 import { chaveQr, produtosPorEnvio, reunirPedidos } from './pedidos.ts'
 import type { LoteConferencia, PedidoConferencia, ProdutoConferencia } from './pedidos.ts'
+import type { DadosRelatorioConferencia } from './relatorio.ts'
 
 interface Bipagem {
-  tipo: 'identificado' | 'repetido' | 'desconhecido'
+  tipo: TipoBipe
   pedido?: PedidoConferencia
 }
 
 interface PdfConferencia extends LoteConferencia {
   id: number
   nome: string
+}
+
+interface PdfRelatorio {
+  relatorio: DadosRelatorioConferencia
+  download: { arquivo: Blob; nome: string } | null
 }
 
 function DadosPedido({ pedido, produtos }: { pedido: PedidoConferencia; produtos?: ProdutoConferencia[] }) {
@@ -42,6 +50,7 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
   const proximoPdf = useRef(0)
   const emProcessamento = useRef(false)
   const validos = useRef(new Set<string>())
+  const audio = useRef<AudioContext | null>(null)
   const [arrastando, setArrastando] = useState(false)
   const [arquivos, setArquivos] = useState<PdfConferencia[]>([])
   const [produtos, setProdutos] = useState(new Map<string, ProdutoConferencia[]>())
@@ -51,7 +60,10 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
   const [bipagem, setBipagem] = useState<Bipagem | null>(null)
   const [quantidade, setQuantidade] = useState(0)
   const [desconhecidos, setDesconhecidos] = useState(0)
-  const [finalizado, setFinalizado] = useState(false)
+  const [relatorio, setRelatorio] = useState<DadosRelatorioConferencia | null>(null)
+  const [pdfRelatorio, setPdfRelatorio] = useState<PdfRelatorio | null>(null)
+  const finalizado = relatorio !== null
+  const pdfAtual = pdfRelatorio?.relatorio === relatorio ? pdfRelatorio : null
   const pedidos = useMemo(() => reunirPedidos(arquivos), [arquivos])
   const codigos = useMemo(() => {
     const porEnvio = new Map(pedidos.map((pedido) => [pedido.envio, pedido]))
@@ -67,6 +79,32 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
   useEffect(() => { if (!ativo) setCamera(false) }, [ativo])
   useEffect(() => { if (camera) areaCamera.current?.scrollIntoView({ block: 'nearest' }) }, [camera])
   useEffect(() => { if (finalizado) areaResumo.current?.focus() }, [finalizado])
+  useEffect(() => () => {
+    if (audio.current) void audio.current.close().catch(() => {})
+    audio.current = null
+  }, [])
+
+  useEffect(() => {
+    if (!relatorio) {
+      setPdfRelatorio(null)
+      return
+    }
+    let cancelado = false
+    const dados = relatorio
+    async function gerar() {
+      try {
+        const { gerarRelatorioConferencia } = await import('./relatorio.ts')
+        const download = await gerarRelatorioConferencia(dados)
+        if (cancelado) return
+        setPdfRelatorio({ relatorio: dados, download })
+        baixarArquivo(download.arquivo, download.nome)
+      } catch {
+        if (!cancelado) setPdfRelatorio({ relatorio: dados, download: null })
+      }
+    }
+    void gerar()
+    return () => { cancelado = true }
+  }, [relatorio])
 
   async function importarPdfs(selecao: FileList | null) {
     if (!selecao?.length || emProcessamento.current) return
@@ -111,7 +149,7 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
         }
         setArquivos((anteriores) => [...anteriores, ...novos])
         setProdutos(encontrados)
-        setFinalizado(false)
+        setRelatorio(null)
       }
       setErro(falhas.join(' '))
     } catch {
@@ -132,6 +170,7 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
       const encontrados = produtosPorEnvio(await lerEnviosDaPlanilha(planilha))
       if (!pedidos.some(({ envio }) => encontrados.has(envio))) throw new Error('A planilha não contém produtos dos envios adicionados.')
       setProdutos((anteriores) => new Map([...anteriores, ...encontrados]))
+      setRelatorio(null)
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : 'Não foi possível ler a planilha.')
     } finally {
@@ -154,12 +193,12 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
     validos.current = new Set([...validos.current].filter((envio) => envios.has(envio)))
     setQuantidade(validos.current.size)
     setArquivos(restantes)
+    setRelatorio(null)
     if (bipagem?.pedido && !envios.has(bipagem.pedido.envio)) setBipagem(null)
     if (!restantes.length) {
       setProdutos(new Map())
       setDesconhecidos(0)
       setBipagem(null)
-      setFinalizado(false)
       setCamera(false)
       setErro('')
     }
@@ -170,16 +209,31 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
     if (!pedido || !pedido.destinatario) {
       setBipagem({ tipo: 'desconhecido' })
       setDesconhecidos((total) => total + 1)
+      tocarBipe(audio.current, 'desconhecido')
       return
     }
     if (validos.current.has(pedido.envio)) {
       setBipagem({ tipo: 'repetido', pedido })
+      tocarBipe(audio.current, 'repetido')
       return
     }
     validos.current.add(pedido.envio)
     setQuantidade(validos.current.size)
     setBipagem({ tipo: 'identificado', pedido })
+    tocarBipe(audio.current, 'identificado')
     navigator.vibrate?.(45)
+  }
+
+  function finalizar() {
+    setCamera(false)
+    setRelatorio({
+      data: new Date(),
+      desconhecidos,
+      arquivos: arquivos.map(({ nome, paginasNaoReconhecidas }) => ({ nome, paginasNaoReconhecidas })),
+      pedidos: pedidos.map(({ envio, destinatario }) => ({
+        envio, destinatario, produtos: produtos.get(envio) ?? [], identificado: validos.current.has(envio),
+      })),
+    })
   }
 
   const pendentes = pedidos.length - quantidade
@@ -280,15 +334,18 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
           )}
           <div className="conferencia-acoes">
             <button type="button" className={'button ' + (camera ? 'button-outline' : 'button-primary')} disabled={!codigos.size || Boolean(processando)} onClick={() => {
-              setFinalizado(false)
+              if (!camera) {
+                audio.current = prepararSom(audio.current)
+                setRelatorio(null)
+              }
               setCamera(!camera)
             }}><Camera size={19} aria-hidden="true" /> {camera ? 'Fechar câmera' : 'Abrir camera para validar pedidos'}</button>
-            {!finalizado && <button type="button" className="button button-outline" disabled={Boolean(processando)} onClick={() => { setCamera(false); setFinalizado(true) }}><ClipboardCheck size={19} aria-hidden="true" /> Finalizar</button>}
+            {!finalizado && <button type="button" className="button button-outline" disabled={Boolean(processando)} onClick={finalizar}><ClipboardCheck size={19} aria-hidden="true" /> Finalizar</button>}
           </div>
         </section>
       )}
 
-      {finalizado && pedidos.length > 0 && (
+      {relatorio && pedidos.length > 0 && (
         <section className="panel" aria-labelledby="titulo-resumo-conferencia">
           <div className="panel-heading">
             <span className="section-icon"><ClipboardCheck size={22} aria-hidden="true" /></span>
@@ -300,6 +357,17 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
             <div><dt>Pendentes</dt><dd>{pendentes}</dd></div>
             <div><dt>Leituras sem identificação</dt><dd>{desconhecidos}</dd></div>
           </dl>
+          <div className="acoes-relatorio">
+            <button type="button" className="button button-primary" disabled={!pdfAtual}
+              onClick={() => {
+                if (pdfAtual?.download) baixarArquivo(pdfAtual.download.arquivo, pdfAtual.download.nome)
+                else setRelatorio({ ...relatorio })
+              }}>
+              {!pdfAtual ? <LoaderCircle className="spinner" size={18} aria-hidden="true" /> : <Download size={18} aria-hidden="true" />}
+              {!pdfAtual ? 'Gerando relatório…' : pdfAtual.download ? 'Baixar relatório em PDF' : 'Tentar gerar PDF novamente'}
+            </button>
+            {pdfAtual && !pdfAtual.download && <p className="notice notice-error" role="alert">Não foi possível gerar o relatório. Tente novamente.</p>}
+          </div>
           <ul className="lista-conferencia">
             {pedidos.map((pedido) => {
               const confirmado = validos.current.has(pedido.envio)
