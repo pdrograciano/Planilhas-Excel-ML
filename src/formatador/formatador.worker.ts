@@ -5,6 +5,10 @@ const worker = self as unknown as DedicatedWorkerGlobalScope
 
 worker.onmessage = async ({ data }: MessageEvent<TarefaWorker>) => {
   try {
+    if (data.tarefa === 'ler-envios') {
+      worker.postMessage({ ok: true, envios: await lerEtiquetas(data.bytes) })
+      return
+    }
     if (data.tarefa === 'etiquetas') {
       const etiquetas = await lerEtiquetas(data.bytes)
       const { gerarPdfEtiquetas } = await import('./etiquetas.ts')

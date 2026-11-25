@@ -1,9 +1,11 @@
+import type { EtiquetaEnvio } from './etiquetas.ts'
+
 export const tipoExcel = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-export type TarefaWorker = { tarefa: 'formatar' | 'renumerar' | 'etiquetas'; bytes: ArrayBuffer }
+export type TarefaWorker = { tarefa: 'formatar' | 'renumerar' | 'etiquetas' | 'ler-envios'; bytes: ArrayBuffer }
 
 type ResultadoWorker =
-  | { ok: true; bytes: ArrayBuffer; porItens?: ArrayBuffer; linhas?: number }
+  | { ok: true; bytes?: ArrayBuffer; porItens?: ArrayBuffer; linhas?: number; envios?: EtiquetaEnvio[] }
   | { ok: false; mensagem: string }
 
 export function nomeBaseGerado(data: number): string {
@@ -50,7 +52,7 @@ async function executarWorker(arquivo: Blob, tarefa: TarefaWorker['tarefa']) {
 
 export async function processarArquivo(arquivo: File) {
   const { bytes, porItens, linhas } = await executarWorker(arquivo, 'formatar')
-  if (!porItens || linhas === undefined) throw new Error('Não foi possível gerar as planilhas formatadas.')
+  if (!bytes || !porItens || linhas === undefined) throw new Error('Não foi possível gerar as planilhas formatadas.')
   return {
     formatada: new Blob([bytes], { type: tipoExcel }),
     porItens: new Blob([porItens], { type: tipoExcel }),
@@ -60,12 +62,20 @@ export async function processarArquivo(arquivo: File) {
 
 export async function renumerarArquivoPorItens(arquivo: Blob): Promise<Blob> {
   const { bytes } = await executarWorker(arquivo, 'renumerar')
+  if (!bytes) throw new Error('Não foi possível renumerar a planilha.')
   return new Blob([bytes], { type: tipoExcel })
 }
 
 export async function gerarPdfNomesSku(arquivo: Blob): Promise<Blob> {
   const { bytes } = await executarWorker(arquivo, 'etiquetas')
+  if (!bytes) throw new Error('Não foi possível gerar o PDF de etiquetas.')
   return new Blob([bytes], { type: 'application/pdf' })
+}
+
+export async function lerEnviosDaPlanilha(arquivo: Blob): Promise<EtiquetaEnvio[]> {
+  const { envios } = await executarWorker(arquivo, 'ler-envios')
+  if (!envios) throw new Error('Não foi possível ler os envios da planilha.')
+  return envios
 }
 
 export function baixarArquivo(arquivo: Blob, nome: string): void {

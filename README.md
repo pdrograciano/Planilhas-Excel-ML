@@ -1,10 +1,10 @@
-# MIXBONIX GERATOR
+# MIXBONIX ORDER
 
 Aplicação web interna para converter o Excel de vendas do Mercado Livre no modelo de pedidos da MIXBONIX. O navegador lê e gera os arquivos localmente. A aplicação funciona em hospedagem estática com HTTPS.
 
 ## Instalação e execução
 
-Requer Node.js 22.12 ou superior.
+Requer Node.js 22.13 ou superior.
 
 ```sh
 npm ci
@@ -25,6 +25,13 @@ As duas versões usam a data e a hora locais da geração. O **Arquivo Formatado
 Quando o Mercado Livre registra um pacote com vários produtos, a coluna **Título do anúncio** mostra **(X pedidos feitos)** na linha do comprador, seguido das linhas dos produtos. A versão por itens ordena o bloco pelo primeiro item e mantém as linhas juntas. A coluna **ORDEM** numera as linhas dos produtos.
 
 Use **PDF nomes e sku** para gerar etiquetas de **40 mm de largura por 25 mm de altura**. O PDF segue a sequência do relatório original e gera uma página por envio, com o nome do comprador, o identificador do envio, o título de cada produto, a quantidade e o SKU. Selecione o papel de **40 × 25 mm** na impressora e imprima em **tamanho real (100%)**.
+
+## Conferência de pedidos do dia
+
+1. Abra **Conferência de pedidos do dia** e selecione o PDF das etiquetas de envio do Mercado Livre.
+2. O site lê os QR codes e os destinatários no aparelho. Para ver os produtos e quantidades, use uma planilha correspondente do histórico ou carregue a planilha de vendas original do lote. A associação usa o identificador do envio.
+3. Abra a câmera, permita o acesso e aponte para o QR de cada etiqueta. Compare o destinatário e os itens exibidos com o pacote. Leituras repetidas não aumentam o total.
+4. Use **Finalizar** para ver os envios identificados, pendentes e o total de leituras que não puderam ser associadas ao PDF.
 
 O ícone de sol ou lua no canto superior direito alterna o tema do site. A preferência é lembrada no navegador.
 

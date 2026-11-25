@@ -1,8 +1,8 @@
 import {
   CheckCircle2, CircleAlert, Clock3, Download, FileSpreadsheet, FolderOpen,
-  History, LoaderCircle, Moon, ShieldCheck, Sun, Trash2, UploadCloud, WandSparkles, X,
+  History, LoaderCircle, Moon, ScanLine, ShieldCheck, Sun, Trash2, UploadCloud, WandSparkles, X,
 } from 'lucide-react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { baixarArquivo, gerarPdfNomesSku, nomeBaseGerado, nomeDaVersao, processarArquivo, renumerarArquivoPorItens, tipoExcel } from './formatador/arquivo.ts'
 import { excluirDoHistorico, guardarNoHistorico, guardarNumeracaoPorItens, identificadorHistorico, limparHistorico } from './historico.ts'
@@ -13,6 +13,11 @@ const numeros = new Intl.NumberFormat('pt-BR')
 const chaveTema = 'mixbonix:tema'
 const logoClaro = new URL('./assets/mixbonix-claro.png', import.meta.url).href
 const logoEscuro = new URL('./assets/mixbonix-escuro.png', import.meta.url).href
+const Conferencia = lazy(() => import('./conferencia/Conferencia.tsx'))
+const abas = [
+  { id: 'planilhas', titulo: 'Organização de pedidos e planilhas', Icone: FileSpreadsheet },
+  { id: 'conferencia', titulo: 'Conferência de pedidos do dia', Icone: ScanLine },
+] as const
 
 function totalLinhas(total: number) {
   return numeros.format(total) + (total === 1 ? ' linha' : ' linhas')
@@ -71,6 +76,9 @@ function DownloadsGerados({ entrada, resultado = false }: { entrada: EntradaHist
 
   return (
     <>
+      <button className="button button-outline" type="button" onClick={() => baixarArquivo(entrada.original, entrada.nome)}>
+        <Download size={17} aria-hidden="true" /> Arquivo original ML
+      </button>
       <button
         className={'button ' + (resultado ? 'button-primary' : 'button-download')}
         type="button"
@@ -100,6 +108,8 @@ function DownloadsGerados({ entrada, resultado = false }: { entrada: EntradaHist
 }
 
 export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof carregarHistorico> }) {
+  const [aba, setAba] = useState(0)
+  const [abriuConferencia, setAbriuConferencia] = useState(false)
   const [escuro, setEscuro] = useState(() => {
     try {
       return window.localStorage.getItem(chaveTema) === 'escuro'
@@ -117,6 +127,11 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
   const input = useRef<HTMLInputElement>(null)
   const profundidade = useRef(0)
   const emExecucao = useRef(false)
+
+  function abrirAba(indice: number) {
+    setAba(indice)
+    if (indice === 1) setAbriuConferencia(true)
+  }
 
   useLayoutEffect(() => {
     const tema = escuro ? 'escuro' : 'claro'
@@ -230,14 +245,30 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
             </button>
           </div>
         </div>
+        <div className="topbar-tabs" role="tablist" aria-label="Ferramentas MIXBONIX" onKeyDown={(evento) => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(evento.key)) return
+          evento.preventDefault()
+          const proxima = evento.key === 'Home' ? 0 : evento.key === 'End' ? abas.length - 1 : 1 - aba
+          abrirAba(proxima)
+          document.getElementById('aba-' + abas[proxima].id)?.focus()
+        }}>
+          {abas.map(({ id, titulo, Icone }, indice) => (
+            <button className="topbar-tab" type="button" role="tab" key={id} id={'aba-' + id}
+              aria-selected={aba === indice} aria-controls={'painel-' + id} tabIndex={aba === indice ? 0 : -1}
+              onClick={() => abrirAba(indice)}>
+              <Icone size={18} aria-hidden="true" /> <span>{titulo}</span>
+            </button>
+          ))}
+        </div>
       </header>
 
       <main className="workspace">
         <div className="intro">
-          <h1>MIXBONIX GERATOR</h1>
-          <p>Conversor de Excel de vendas do Mercado Livre para o modelo da MIXBONIX.</p>
+          <h1>MIXBONIX ORDER</h1>
+          {aba === 0 && <p>Conversor de Excel de vendas do Mercado Livre para o modelo da MIXBONIX.</p>}
         </div>
 
+        <div role="tabpanel" id="painel-planilhas" aria-labelledby="aba-planilhas" hidden={aba !== 0}>
         <section className="panel" aria-labelledby="titulo-formatar">
           <div className="panel-heading">
             <span className="section-icon"><FileSpreadsheet size={21} aria-hidden="true" /></span>
@@ -380,9 +411,6 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
                     </div>
                   </div>
                   <div className="download-actions history-actions">
-                    <button className="button button-outline" type="button" onClick={() => baixarArquivo(entrada.original, entrada.nome)}>
-                      <Download size={17} aria-hidden="true" /> Arquivo original ML
-                    </button>
                     <DownloadsGerados entrada={entrada} />
                   </div>
                   <button
@@ -406,6 +434,14 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
             </ul>
           )}
         </section>
+        </div>
+        <div role="tabpanel" id="painel-conferencia" aria-labelledby="aba-conferencia" hidden={aba !== 1}>
+          {abriuConferencia && (
+            <Suspense fallback={<p className="notice notice-info" role="status">Abrindo conferência…</p>}>
+              <Conferencia ativo={aba === 1} entradas={entradas} />
+            </Suspense>
+          )}
+        </div>
       </main>
       <footer className="site-footer">
         <div className="site-footer-inner">
