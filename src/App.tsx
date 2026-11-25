@@ -1,10 +1,10 @@
 import {
   CheckCircle2, CircleAlert, Clock3, Download, FileSpreadsheet, FolderOpen,
-  History, LoaderCircle, Moon, ScanLine, ShieldCheck, Sun, Trash2, UploadCloud, WandSparkles, X,
+  History, LoaderCircle, Menu, Moon, ScanLine, ShieldCheck, Sun, Trash2, UploadCloud, WandSparkles, X,
 } from 'lucide-react'
 import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { baixarArquivo, gerarPdfNomesSku, nomeBaseGerado, nomeDaVersao, processarArquivo, renumerarArquivoPorItens, tipoExcel } from './formatador/arquivo.ts'
+import { baixarArquivo, nomeBaseGerado, nomeDaVersao, processarArquivo, renumerarArquivoPorItens, tipoExcel } from './formatador/arquivo.ts'
 import { excluirDoHistorico, guardarNoHistorico, guardarNumeracaoPorItens, identificadorHistorico, limparHistorico } from './historico.ts'
 import type { carregarHistorico, EntradaHistorico } from './historico.ts'
 
@@ -15,8 +15,8 @@ const logoClaro = new URL('./assets/mixbonix-claro.png', import.meta.url).href
 const logoEscuro = new URL('./assets/mixbonix-escuro.png', import.meta.url).href
 const Conferencia = lazy(() => import('./conferencia/Conferencia.tsx'))
 const abas = [
-  { id: 'planilhas', titulo: 'Organização de pedidos e planilhas', Icone: FileSpreadsheet },
-  { id: 'conferencia', titulo: 'Conferência de pedidos do dia', Icone: ScanLine },
+  { id: 'planilhas', titulo: 'Organização de pedidos e planilhas', tituloMobile: 'Pedidos e planilhas', Icone: FileSpreadsheet },
+  { id: 'conferencia', titulo: 'Conferência de pedidos do dia', tituloMobile: 'Conferência do dia', Icone: ScanLine },
 ] as const
 
 function totalLinhas(total: number) {
@@ -34,7 +34,6 @@ function tamanhoArquivo(bytes: number) {
 function DownloadsGerados({ entrada, resultado = false }: { entrada: EntradaHistorico; resultado?: boolean }) {
   const [corrigido, setCorrigido] = useState<Blob | null>(null)
   const [corrigindo, setCorrigindo] = useState(false)
-  const [gerandoPdf, setGerandoPdf] = useState(false)
   const [erro, setErro] = useState('')
   const nomeBase = entrada.nomeGerado ?? nomeBaseGerado(entrada.data)
   const porItens = entrada.porItens
@@ -57,20 +56,6 @@ function DownloadsGerados({ entrada, resultado = false }: { entrada: EntradaHist
       setErro(falha instanceof Error ? falha.message : 'Não foi possível baixar o Arquivo Ordenado por Itens.')
     } finally {
       setCorrigindo(false)
-    }
-  }
-
-  async function baixarPdf() {
-    if (gerandoPdf) return
-    setGerandoPdf(true)
-    setErro('')
-    try {
-      const pdf = await gerarPdfNomesSku(entrada.original)
-      baixarArquivo(pdf, nomeDaVersao(nomeBase, 'NomesSKU'))
-    } catch (falha) {
-      setErro(falha instanceof Error ? falha.message : 'Não foi possível gerar o PDF de etiquetas.')
-    } finally {
-      setGerandoPdf(false)
     }
   }
 
@@ -98,10 +83,6 @@ function DownloadsGerados({ entrada, resultado = false }: { entrada: EntradaHist
           Arquivo Ordenado por Itens
         </button>
       )}
-      <button className="button button-download" type="button" onClick={baixarPdf} disabled={gerandoPdf} aria-busy={gerandoPdf}>
-        {gerandoPdf ? <LoaderCircle className="spinner" size={17} aria-hidden="true" /> : <Download size={17} aria-hidden="true" />}
-        {gerandoPdf ? 'Gerando PDF…' : 'PDF nomes e sku'}
-      </button>
       {erro && <p className="notice notice-error" role="alert">{erro}</p>}
     </>
   )
@@ -109,6 +90,7 @@ function DownloadsGerados({ entrada, resultado = false }: { entrada: EntradaHist
 
 export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof carregarHistorico> }) {
   const [aba, setAba] = useState(0)
+  const [menuAberto, setMenuAberto] = useState(false)
   const [abriuConferencia, setAbriuConferencia] = useState(false)
   const [escuro, setEscuro] = useState(() => {
     try {
@@ -125,12 +107,18 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
   const [processando, setProcessando] = useState(false)
   const [arrastando, setArrastando] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const botaoMenu = useRef<HTMLButtonElement>(null)
   const profundidade = useRef(0)
   const emExecucao = useRef(false)
 
   function abrirAba(indice: number) {
     setAba(indice)
     if (indice === 1) setAbriuConferencia(true)
+  }
+
+  function fecharMenu() {
+    setMenuAberto(false)
+    if (botaoMenu.current?.offsetParent) botaoMenu.current.focus()
   }
 
   useLayoutEffect(() => {
@@ -228,7 +216,9 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
 
   return (
     <>
-      <header className="topbar">
+      <header className="topbar" onKeyDown={(evento) => {
+        if (evento.key === 'Escape' && menuAberto) fecharMenu()
+      }}>
         <div className="topbar-inner">
           <img className="brand-logo" src={escuro ? logoEscuro : logoClaro} width={444} height={204} alt="MIXBONIX" />
           <div className="topbar-actions">
@@ -243,10 +233,15 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
             >
               {escuro ? <Moon size={19} aria-hidden="true" /> : <Sun size={20} aria-hidden="true" />}
             </button>
+            <button className="icon-button botao-menu" type="button" ref={botaoMenu}
+              aria-label={menuAberto ? 'Fechar menu' : 'Abrir menu'} aria-expanded={menuAberto} aria-controls="abas-mixbonix"
+              onClick={() => setMenuAberto(!menuAberto)}>
+              {menuAberto ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
+            </button>
           </div>
         </div>
-        <div className="topbar-tabs" role="tablist" aria-label="Ferramentas MIXBONIX" onKeyDown={(evento) => {
-          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(evento.key)) return
+        <div id="abas-mixbonix" className="topbar-tabs" data-menu-aberto={menuAberto} role="tablist" aria-label="Ferramentas MIXBONIX" onKeyDown={(evento) => {
+          if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(evento.key)) return
           evento.preventDefault()
           const proxima = evento.key === 'Home' ? 0 : evento.key === 'End' ? abas.length - 1 : 1 - aba
           abrirAba(proxima)
@@ -255,7 +250,10 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
           {abas.map(({ id, titulo, Icone }, indice) => (
             <button className="topbar-tab" type="button" role="tab" key={id} id={'aba-' + id}
               aria-selected={aba === indice} aria-controls={'painel-' + id} tabIndex={aba === indice ? 0 : -1}
-              onClick={() => abrirAba(indice)}>
+              onClick={() => {
+                abrirAba(indice)
+                if (menuAberto) fecharMenu()
+              }}>
               <Icone size={18} aria-hidden="true" /> <span>{titulo}</span>
             </button>
           ))}
@@ -264,7 +262,7 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
 
       <main className="workspace">
         <div className="intro">
-          <h1>MIXBONIX ORDER</h1>
+          <h1><span className="titulo-desktop">MIXBONIX ORDER</span><span className="titulo-mobile">{abas[aba].tituloMobile}</span></h1>
           {aba === 0 && <p>Conversor de Excel de vendas do Mercado Livre para o modelo da MIXBONIX.</p>}
         </div>
 

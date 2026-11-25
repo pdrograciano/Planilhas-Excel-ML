@@ -8,14 +8,17 @@ import QRCode from 'qrcode'
 import { preview } from 'vite'
 import { exemploFicticio } from './exemplo-ficticio.mjs'
 
-async function etiquetasFicticias() {
-  const codigos = [8, 9, 99].map((criacao) => JSON.stringify({ id: String(70000000000 + criacao), t: 'lm' }))
+async function etiquetasFicticias(indices) {
+  const numeros = [8, 9, 11, 99]
+  const compradores = ['Cliente Fictício', 'Cliente da Silva', 'Cliente do Segundo Lote']
+  const codigos = numeros.map((numero) => JSON.stringify({ id: String(70000000000 + numero), t: 'lm' }))
   const imagens = await Promise.all(codigos.map((codigo) => QRCode.toDataURL(codigo, { width: 260 })))
   const pdf = await PDFDocument.create()
-  for (const [indice, comprador] of ['Cliente Fictício', 'Cliente da Silva'].entries()) {
+  for (const indice of indices) {
+    const comprador = compradores[indice]
     const pagina = pdf.addPage([283, 425])
     pagina.drawText('Envio: 700000', { x: 20, y: 365, size: 12 })
-    pagina.drawText(`0000${8 + indice}`, { x: 102, y: 365, size: 14 })
+    pagina.drawText(String(numeros[indice]).padStart(5, '0'), { x: 102, y: 365, size: 14 })
     const qr = await pdf.embedPng(imagens[indice])
     pagina.drawImage(qr, { x: 178, y: 30, width: 80, height: 80 })
     if (!indice) pagina.drawText(comprador + ' (CLIENTE)', { x: 20, y: 95, size: 10 })
@@ -53,7 +56,7 @@ async function comNavegador(executar) {
   }
 }
 
-test('cruza o PDF e a planilha e confere QR codes na câmera em tela de celular', { timeout: 80_000 }, () => comNavegador(async (navegador, url) => {
+test('reúne PDFs, preserva os bipes ao adicionar etiquetas e usa o menu no celular', { timeout: 80_000 }, () => comNavegador(async (navegador, url) => {
   const pagina = await navegador.newPage({ viewport: { width: 375, height: 750 }, isMobile: true, hasTouch: true })
   await pagina.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = async () => {
@@ -82,24 +85,39 @@ test('cruza o PDF e a planilha e confere QR codes na câmera em tela de celular'
       return stream
     }
   })
-  const { imagens, buffer } = await etiquetasFicticias()
-  const pdf = { name: 'etiquetas-ficticias.pdf', mimeType: 'application/pdf', buffer }
+  const { imagens, buffer } = await etiquetasFicticias([0])
+  const manha = { name: 'manha.pdf', mimeType: 'application/pdf', buffer }
+  const tarde = { name: 'tarde.pdf', mimeType: 'application/pdf', buffer: (await etiquetasFicticias([0, 1])).buffer }
+  const extra = (await etiquetasFicticias([2])).buffer
+  const invalido = { name: 'invalido.pdf', mimeType: 'application/pdf', buffer: Buffer.from('inválido') }
   const planilha = { name: 'pedidos-ficticios.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: await exemploFicticio() }
 
   await pagina.goto(url)
   const aba = pagina.getByRole('tab', { name: 'Conferência de pedidos do dia' })
+  const menu = pagina.getByRole('button', { name: 'Abrir menu' })
+  assert.equal(await aba.count(), 0)
+  await menu.click()
+  await pagina.getByRole('button', { name: 'Fechar menu' }).press('Escape')
+  assert.equal(await aba.count(), 0)
+  await menu.click()
   await aba.click()
+  assert.equal(await menu.getAttribute('aria-expanded'), 'false')
   const painel = pagina.getByRole('tabpanel', { name: 'Conferência de pedidos do dia' })
   const camera = painel.getByRole('button', { name: 'Abrir camera para validar pedidos' })
   assert.equal(await camera.count(), 0)
-  await painel.locator('input[accept$="application/pdf"]').setInputFiles(pdf)
+  const campoPdfs = painel.locator('input[accept$="application/pdf"]')
+  await campoPdfs.setInputFiles([manha, invalido, tarde])
   await painel.getByText('2 envios encontrados').waitFor()
+  await painel.getByText('2 PDFs adicionados').waitFor()
+  await painel.getByRole('alert').getByText('Não foi possível ler invalido.pdf.').waitFor()
   assert.deepEqual(await painel.locator('.notice-warning').allTextContents(), [])
   const anexarPlanilha = painel.getByRole('button', { name: 'Carregar planilha de vendas' })
+  await painel.getByText('Vincular planilha de vendas', { exact: true }).click()
   await anexarPlanilha.waitFor()
   await painel.locator('input[accept^=".xlsx"]').setInputFiles(planilha)
   await anexarPlanilha.waitFor({ state: 'hidden' })
   await camera.click()
+  assert.equal(await painel.locator('.conferencia-arquivos').isVisible(), false)
   await painel.getByText('Centralize o QR code da etiqueta no quadro.').waitFor()
 
   await pagina.evaluate((imagem) => window.mostrarQr(imagem), imagens[0])
@@ -108,35 +126,57 @@ test('cruza o PDF e a planilha e confere QR codes na câmera em tela de celular'
   await painel.getByText('Kit 02 Timer', { exact: true }).waitFor()
   await painel.getByText('Qtd. 2', { exact: true }).waitFor()
   await painel.getByText('1 de 2 envios bipados', { exact: true }).waitFor()
-  await pagina.evaluate((imagem) => window.mostrarQr(imagem), imagens[2])
+  await pagina.evaluate((imagem) => window.mostrarQr(imagem), imagens[3])
   await painel.getByText('Pedido não identificado', { exact: true }).waitFor()
   await pagina.evaluate((imagem) => window.mostrarQr(imagem), imagens[0])
   await painel.getByText('Pedido já identificado', { exact: true }).waitFor()
   await painel.getByText('1 de 2 envios bipados', { exact: true }).waitFor()
 
+  await painel.getByRole('button', { name: 'Fechar câmera' }).click()
+  const dataTransfer = await pagina.evaluateHandle((bytes) => {
+    const dados = new DataTransfer()
+    dados.items.add(new File([Uint8Array.from(bytes)], 'extra.pdf', { type: 'application/pdf' }))
+    return dados
+  }, [...extra])
+  await painel.locator('.conferencia-dropzone').dispatchEvent('drop', { dataTransfer })
+  await dataTransfer.dispose()
+  await painel.getByText('1 de 3 envios bipados', { exact: true }).waitFor()
+  assert.equal(await painel.getByText('Vincular planilha de vendas', { exact: true }).count(), 0)
+  await painel.getByText('3 PDFs adicionados').click()
+  await painel.getByRole('button', { name: 'Remover manha.pdf' }).click()
+  await painel.getByText('2 PDFs adicionados').waitFor()
+  await painel.getByText('1 de 3 envios bipados', { exact: true }).waitFor()
+
   await painel.getByRole('button', { name: 'Finalizar' }).click()
   const resumo = painel.getByRole('region', { name: 'Resultado da conferência' })
   await resumo.getByText('Cliente da Silva').waitFor()
-  await resumo.getByText('Pendente', { exact: true }).waitFor()
+  assert.equal(await resumo.getByText('Pendente', { exact: true }).count(), 2)
   assert.equal(await pagina.evaluate(() => window.faixaTeste.readyState), 'ended')
 
   await camera.click()
   await painel.getByText('Centralize o QR code da etiqueta no quadro.').waitFor()
   await pagina.evaluate((imagem) => window.mostrarQr(imagem), imagens[1])
-  await painel.getByText('2 de 2 envios bipados', { exact: true }).waitFor({ timeout: 8000 })
+  await painel.getByText('2 de 3 envios bipados', { exact: true }).waitFor({ timeout: 8000 })
+  await pagina.evaluate((imagem) => window.mostrarQr(imagem), imagens[2])
+  await painel.getByText('3 de 3 envios bipados', { exact: true }).waitFor({ timeout: 8000 })
   await painel.getByRole('button', { name: 'Finalizar' }).click()
-  await resumo.getByText('Todos os envios do PDF foram bipados.').waitFor()
-  assert.equal(await resumo.getByText('Identificado', { exact: true }).count(), 2)
+  await resumo.getByText('Todos os envios do lote foram bipados.').waitFor()
+  assert.equal(await resumo.getByText('Identificado', { exact: true }).count(), 3)
   assert.equal(await pagina.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
 
   const abaPlanilhas = pagina.getByRole('tab', { name: 'Organização de pedidos e planilhas' })
+  await menu.click()
   await abaPlanilhas.click()
   await pagina.locator('#painel-planilhas input[type="file"]').setInputFiles(planilha)
   await pagina.getByRole('button', { name: 'Gerar planilhas' }).click()
   await pagina.getByText('Planilhas prontas').waitFor()
+  await menu.click()
   await aba.click()
-  await resumo.getByText('Todos os envios do PDF foram bipados.').waitFor()
-  await painel.locator('input[accept$="application/pdf"]').setInputFiles(pdf)
+  await resumo.getByText('Todos os envios do lote foram bipados.').waitFor()
+  await pagina.reload()
+  await menu.click()
+  await aba.click()
+  await campoPdfs.setInputFiles([manha, tarde])
   await painel.getByText('0 de 2 envios bipados', { exact: true }).waitFor()
   assert.equal(await anexarPlanilha.count(), 0)
 }))
@@ -216,19 +256,14 @@ test('formata, recarrega, baixa os arquivos e isola o histórico por guia', { ti
   const resultado = pagina.locator('.result')
   await resultado.waitFor()
   const botoesDownload = await resultado.locator('.download-actions > button').evaluateAll((botoes) => botoes.map((botao) => botao.getBoundingClientRect().top))
-  assert.equal(botoesDownload.length, 4)
+  assert.equal(botoesDownload.length, 3)
   assert.equal(botoesDownload[0], botoesDownload[1])
-  assert.equal(botoesDownload[2], botoesDownload[3])
   assert.ok(botoesDownload[0] < botoesDownload[2])
   const formato = { name: 'Arquivo Formatado', exact: true }
   const porItem = { name: 'Arquivo Ordenado por Itens', exact: true }
   await pagina.getByText('6 linhas de pedidos.').waitFor()
   const primeira = await baixar(pagina, resultado.getByRole('button', formato))
   const primeiraPorItem = await baixar(pagina, resultado.getByRole('button', porItem))
-  const pdfEtiquetas = { name: 'PDF nomes e sku', exact: true }
-  const pdf = await baixar(pagina, resultado.getByRole('button', pdfEtiquetas))
-  assert.equal(pdf.nome, '24-11-2026_12-34-56_NomesSKU_MercadoLivre_mixbonixgerator.pdf')
-  assert.equal((await PDFDocument.load(pdf.bytes)).getPageCount(), 6)
   assert.equal(primeira.nome, '24-11-2026_12-34-56_Formatado_MercadoLivre_mixbonixgerator.xlsx')
   assert.equal(primeiraPorItem.nome, '24-11-2026_12-34-56_PorItens_MercadoLivre_mixbonixgerator.xlsx')
   assert.equal(primeiraPorItem.bytes.equals(primeira.bytes), false)
@@ -248,10 +283,9 @@ test('formata, recarrega, baixa os arquivos e isola o histórico por guia', { ti
   await pagina.reload()
   await entradas.nth(1).waitFor()
   assert.equal(await entradas.count(), 2)
-  const pdfAposRecarregar = await baixar(pagina, entradas.first().getByRole('button', pdfEtiquetas))
-  assert.equal((await PDFDocument.load(pdfAposRecarregar.bytes)).getPageCount(), 6)
   for (const [indice, [esperado, esperadoPorItem]] of [[segunda, segundaPorItem], [primeira, primeiraPorItem]].entries()) {
     const entrada = entradas.nth(indice)
+    assert.equal(await entrada.locator('.download-actions > button').count(), 3)
     assert.match(await entrada.innerText(), /pedidos-teste\.xlsx.*\n.*6 linhas/s)
     const retornoOriginal = await baixar(pagina, entrada.getByRole('button', { name: 'Arquivo original ML', exact: true }))
     const retornoFormatada = await baixar(pagina, entrada.getByRole('button', formato))
@@ -375,8 +409,7 @@ test('funciona no celular e conserva os downloads quando o armazenamento falha',
   assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo original ML', exact: true }))).bytes.equals(original), true)
   assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo Formatado', exact: true }))).bytes.length > 0, true)
   assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo Ordenado por Itens', exact: true }))).bytes.length > 0, true)
-  const pdf = await baixar(pagina, historico.getByRole('button', { name: 'PDF nomes e sku', exact: true }))
-  assert.equal((await PDFDocument.load(pdf.bytes)).getPageCount(), 6)
+  assert.equal(await historico.locator('.download-actions > button').count(), 3)
   await entrada.setInputFiles({ name: 'outro-inválido.xlsx', mimeType: 'text/plain', buffer: Buffer.from('inválido') })
   await gerar.click()
   await pagina.getByRole('alert').waitFor()

@@ -29,14 +29,28 @@ export function chaveQr(texto: string): string {
   return codigo
 }
 
-export function combinarProdutos(pedidos: PedidoConferencia[], envios: EtiquetaEnvio[]): Map<string, ProdutoConferencia[]> {
-  const ids = new Set(pedidos.map(({ envio }) => envio).filter(Boolean))
+export function reunirPedidos(lotes: LoteConferencia[]): PedidoConferencia[] {
+  const pedidos = new Map<string, PedidoConferencia>()
+  for (const lote of lotes) {
+    for (const pedido of lote.pedidos) {
+      const anterior = pedidos.get(pedido.envio)
+      pedidos.set(pedido.envio, anterior ? {
+        ...anterior,
+        destinatario: anterior.destinatario || pedido.destinatario,
+        codigo: anterior.codigo ?? pedido.codigo,
+      } : pedido)
+    }
+  }
+  return [...pedidos.values()]
+}
+
+export function produtosPorEnvio(envios: EtiquetaEnvio[]): Map<string, ProdutoConferencia[]> {
   const encontrados = new Map<string, ProdutoConferencia[]>()
   for (const { envio, produtos } of envios) {
-    if (!ids.has(envio)) continue
-    encontrados.set(envio, produtos.filter(({ nome }) => nome.trim()).map(({ nome, unidades }) => ({
+    const itens = produtos.filter(({ nome }) => nome.trim()).map(({ nome, unidades }) => ({
       nome: nomeCurto(nome), quantidade: unidades,
-    })))
+    }))
+    if (envio && itens.length) encontrados.set(envio, itens)
   }
   return encontrados
 }

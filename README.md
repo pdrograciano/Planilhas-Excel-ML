@@ -24,11 +24,9 @@ As duas versões usam a data e a hora locais da geração. O **Arquivo Formatado
 
 Quando o Mercado Livre registra um pacote com vários produtos, a coluna **Título do anúncio** mostra **(X pedidos feitos)** na linha do comprador, seguido das linhas dos produtos. A versão por itens ordena o bloco pelo primeiro item e mantém as linhas juntas. A coluna **ORDEM** numera as linhas dos produtos.
 
-Use **PDF nomes e sku** para gerar etiquetas de **40 mm de largura por 25 mm de altura**. O PDF segue a sequência do relatório original e gera uma página por envio, com o nome do comprador, o identificador do envio, o título de cada produto, a quantidade e o SKU. Selecione o papel de **40 × 25 mm** na impressora e imprima em **tamanho real (100%)**.
-
 ## Conferência de pedidos do dia
 
-1. Abra **Conferência de pedidos do dia** e selecione o PDF das etiquetas de envio do Mercado Livre.
+1. Abra **Conferência de pedidos do dia** pelo menu no celular ou pelas abas no computador. Selecione ou arraste os PDFs das etiquetas do Mercado Livre. Use **Adicionar PDFs** para trazer novos arquivos para a mesma conferência. Envios repetidos contam uma vez, e as validações anteriores continuam no lote.
 2. O site lê os QR codes e os destinatários no aparelho. Para ver os produtos e quantidades, use uma planilha correspondente do histórico ou carregue a planilha de vendas original do lote. A associação usa o identificador do envio.
 3. Abra a câmera, permita o acesso e aponte para o QR de cada etiqueta. Compare o destinatário e os itens exibidos com o pacote. Leituras repetidas não aumentam o total.
 4. Use **Finalizar** para ver os envios identificados, pendentes e o total de leituras que não puderam ser associadas ao PDF.

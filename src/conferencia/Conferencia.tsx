@@ -1,15 +1,20 @@
-import { Camera, CheckCircle2, CircleAlert, ClipboardCheck, FileText, FolderOpen, LoaderCircle, ScanLine, UploadCloud } from 'lucide-react'
+import { Camera, CheckCircle2, ChevronDown, CircleAlert, ClipboardCheck, FileText, FolderOpen, LoaderCircle, ScanLine, Trash2, UploadCloud } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { lerEnviosDaPlanilha, tipoExcel } from '../formatador/arquivo.ts'
 import type { EntradaHistorico } from '../historico.ts'
 import { CameraConferencia } from './CameraConferencia.tsx'
-import { chaveQr, combinarProdutos } from './pedidos.ts'
+import { chaveQr, produtosPorEnvio, reunirPedidos } from './pedidos.ts'
 import type { LoteConferencia, PedidoConferencia, ProdutoConferencia } from './pedidos.ts'
 
 interface Bipagem {
   tipo: 'identificado' | 'repetido' | 'desconhecido'
   pedido?: PedidoConferencia
+}
+
+interface PdfConferencia extends LoteConferencia {
+  id: number
+  nome: string
 }
 
 function DadosPedido({ pedido, produtos }: { pedido: PedidoConferencia; produtos?: ProdutoConferencia[] }) {
@@ -34,10 +39,11 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
   const areaCamera = useRef<HTMLElement>(null)
   const areaResumo = useRef<HTMLHeadingElement>(null)
   const profundidade = useRef(0)
+  const proximoPdf = useRef(0)
+  const emProcessamento = useRef(false)
   const validos = useRef(new Set<string>())
   const [arrastando, setArrastando] = useState(false)
-  const [arquivo, setArquivo] = useState('')
-  const [lote, setLote] = useState<LoteConferencia | null>(null)
+  const [arquivos, setArquivos] = useState<PdfConferencia[]>([])
   const [produtos, setProdutos] = useState(new Map<string, ProdutoConferencia[]>())
   const [processando, setProcessando] = useState('')
   const [erro, setErro] = useState('')
@@ -46,71 +52,90 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
   const [quantidade, setQuantidade] = useState(0)
   const [desconhecidos, setDesconhecidos] = useState(0)
   const [finalizado, setFinalizado] = useState(false)
-  const codigos = useMemo(() => new Map(lote?.pedidos.flatMap((pedido) => pedido.codigo ? [[pedido.codigo, pedido] as const] : [])), [lote])
-  const faltamProdutos = lote?.pedidos.filter(({ envio }) => {
+  const pedidos = useMemo(() => reunirPedidos(arquivos), [arquivos])
+  const codigos = useMemo(() => {
+    const porEnvio = new Map(pedidos.map((pedido) => [pedido.envio, pedido]))
+    return new Map(arquivos.flatMap((arquivo) => arquivo.pedidos.flatMap(({ codigo, envio }) =>
+      codigo ? [[codigo, porEnvio.get(envio)!] as const] : [])))
+  }, [arquivos, pedidos])
+  const faltamProdutos = pedidos.filter(({ envio }) => {
     const itens = produtos.get(envio)
     return !itens?.length || itens.some(({ quantidade }) => quantidade === null)
-  }).length ?? 0
-  const semQr = (lote?.pedidos.length ?? 0) - codigos.size
+  }).length
+  const semQr = pedidos.filter(({ codigo }) => !codigo).length
 
   useEffect(() => { if (!ativo) setCamera(false) }, [ativo])
   useEffect(() => { if (camera) areaCamera.current?.scrollIntoView({ block: 'nearest' }) }, [camera])
   useEffect(() => { if (finalizado) areaResumo.current?.focus() }, [finalizado])
 
-  async function importarPdf(arquivos: FileList | null) {
-    if (!arquivos?.length || processando) return
-    if (arquivos.length !== 1 || !/\.pdf$/i.test(arquivos[0].name)) {
-      setErro('Selecione um único arquivo no formato .pdf.')
-      return
-    }
-    const arquivoPdf = arquivos[0]
+  async function importarPdfs(selecao: FileList | null) {
+    if (!selecao?.length || emProcessamento.current) return
+    const selecionados = Array.from(selecao)
+    const novos: PdfConferencia[] = []
+    const falhas: string[] = []
+    emProcessamento.current = true
     setErro('')
     setCamera(false)
-    setProcessando('Abrindo PDF…')
+    setProcessando('Abrindo etiquetas…')
     try {
       const { lerPdfEtiquetas } = await import('./leituraPdf.ts')
-      const novoLote = await lerPdfEtiquetas(arquivoPdf, (atual, total) => setProcessando(`Lendo página ${atual} de ${total}…`))
-      const encontrados = new Map<string, ProdutoConferencia[]>()
-      if (entradas.length) setProcessando('Buscando produtos nas planilhas do histórico…')
-      for (const entrada of entradas) {
+      for (const [indice, pdf] of selecionados.entries()) {
+        if (!/\.pdf$/i.test(pdf.name)) {
+          falhas.push(`${pdf.name} precisa estar no formato PDF.`)
+          continue
+        }
         try {
-          const dados = combinarProdutos(novoLote.pedidos, await lerEnviosDaPlanilha(entrada.original))
-          for (const [envio, lista] of dados) {
-            if (lista.length && !encontrados.has(envio)) encontrados.set(envio, lista)
-          }
-          if (encontrados.size === novoLote.pedidos.length) break
-        } catch {
-          // Uma planilha antiga pode estar ilegível. Ainda é possível carregar outra.
+          const lote = await lerPdfEtiquetas(pdf, (atual, total) => {
+            setProcessando(`PDF ${indice + 1} de ${selecionados.length} · Página ${atual} de ${total}`)
+          })
+          novos.push({ ...lote, id: proximoPdf.current++, nome: pdf.name })
+        } catch (falha) {
+          falhas.push(falha instanceof Error && falha.message.startsWith('Nenhum envio')
+            ? `Nenhum envio encontrado em ${pdf.name}.` : `Não foi possível ler ${pdf.name}.`)
         }
       }
-      setArquivo(arquivoPdf.name)
-      setLote(novoLote)
-      setProdutos(encontrados)
-      validos.current.clear()
-      setQuantidade(0)
-      setBipagem(null)
-      setDesconhecidos(0)
-      setFinalizado(false)
-    } catch (falha) {
-      setErro(falha instanceof Error && falha.message.startsWith('Nenhum envio')
-        ? falha.message : 'Não foi possível ler o PDF. Exporte as etiquetas novamente e tente de novo.')
+      if (novos.length) {
+        const pendentes = new Set(reunirPedidos([...arquivos, ...novos]).map(({ envio }) => envio).filter((envio) => !produtos.has(envio)))
+        const encontrados = new Map(produtos)
+        if (pendentes.size && entradas.length) setProcessando('Buscando produtos no histórico…')
+        for (const entrada of entradas) {
+          if (!pendentes.size) break
+          try {
+            const dados = produtosPorEnvio(await lerEnviosDaPlanilha(entrada.original))
+            for (const [envio, lista] of dados) {
+              if (pendentes.delete(envio)) encontrados.set(envio, lista)
+            }
+          } catch {
+            // Uma planilha antiga ilegível não impede a conferência.
+          }
+        }
+        setArquivos((anteriores) => [...anteriores, ...novos])
+        setProdutos(encontrados)
+        setFinalizado(false)
+      }
+      setErro(falhas.join(' '))
+    } catch {
+      setErro('Não foi possível iniciar a leitura dos PDFs. Tente novamente.')
     } finally {
+      emProcessamento.current = false
       setProcessando('')
     }
   }
 
   async function importarExcel(planilha: File | undefined) {
-    if (!planilha || !lote || processando) return
+    if (!planilha || !pedidos.length || emProcessamento.current) return
+    emProcessamento.current = true
     setErro('')
     setProcessando('Cruzando produtos por código de envio…')
     try {
       if (!/\.xlsx$/i.test(planilha.name)) throw new Error('Selecione a planilha de vendas original no formato .xlsx.')
-      const encontrados = combinarProdutos(lote.pedidos, await lerEnviosDaPlanilha(planilha))
-      if (![...encontrados.values()].some((lista) => lista.length)) throw new Error('A planilha não contém produtos dos envios deste PDF. Confira se os dois arquivos são do mesmo lote.')
-      setProdutos((anteriores) => new Map([...anteriores, ...[...encontrados].filter(([, lista]) => lista.length)]))
+      const encontrados = produtosPorEnvio(await lerEnviosDaPlanilha(planilha))
+      if (!pedidos.some(({ envio }) => encontrados.has(envio))) throw new Error('A planilha não contém produtos dos envios adicionados.')
+      setProdutos((anteriores) => new Map([...anteriores, ...encontrados]))
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : 'Não foi possível ler a planilha.')
     } finally {
+      emProcessamento.current = false
       setProcessando('')
     }
   }
@@ -119,7 +144,25 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
     evento.preventDefault()
     profundidade.current = 0
     setArrastando(false)
-    void importarPdf(evento.dataTransfer.files)
+    void importarPdfs(evento.dataTransfer.files)
+  }
+
+  function removerPdf(id: number) {
+    if (emProcessamento.current) return
+    const restantes = arquivos.filter((arquivo) => arquivo.id !== id)
+    const envios = new Set(reunirPedidos(restantes).map(({ envio }) => envio))
+    validos.current = new Set([...validos.current].filter((envio) => envios.has(envio)))
+    setQuantidade(validos.current.size)
+    setArquivos(restantes)
+    if (bipagem?.pedido && !envios.has(bipagem.pedido.envio)) setBipagem(null)
+    if (!restantes.length) {
+      setProdutos(new Map())
+      setDesconhecidos(0)
+      setBipagem(null)
+      setFinalizado(false)
+      setCamera(false)
+      setErro('')
+    }
   }
 
   function registrar(texto: string) {
@@ -139,20 +182,20 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
     navigator.vibrate?.(45)
   }
 
-  const pendentes = (lote?.pedidos.length ?? 0) - quantidade
-  const totalPaginasIgnoradas = lote?.paginasNaoReconhecidas.length ?? 0
-  const semNome = lote?.pedidos.filter(({ destinatario }) => !destinatario).length ?? 0
+  const pendentes = pedidos.length - quantidade
+  const arquivosComAvisos = arquivos.filter(({ paginasNaoReconhecidas }) => paginasNaoReconhecidas.length)
+  const semNome = pedidos.filter(({ destinatario }) => !destinatario).length
   const mensagens = { identificado: 'Pedido identificado', repetido: 'Pedido já identificado', desconhecido: 'Pedido não identificado' }
 
   return (
-    <div className="conferencia">
-      <section className="panel" aria-labelledby="titulo-pdf-conferencia">
+    <div className={'conferencia' + (camera ? ' conferencia-em-leitura' : '')}>
+      <section className="panel conferencia-arquivos" aria-labelledby="titulo-pdf-conferencia">
         <div className="panel-heading">
           <span className="section-icon"><FileText size={22} aria-hidden="true" /></span>
-          <div><h2 id="titulo-pdf-conferencia">Etiquetas do dia</h2><p>Envie o PDF de etiquetas do Mercado Livre para identificar os destinatários.</p></div>
+          <div><h2 id="titulo-pdf-conferencia">Etiquetas do dia</h2><p>{pedidos.length ? `${pedidos.length} ${pedidos.length === 1 ? 'envio encontrado' : 'envios encontrados'}` : 'Reúna os PDFs do dia em uma só conferência.'}</p></div>
         </div>
         <div
-          className={'dropzone conferencia-dropzone' + (arrastando ? ' dropzone-active' : '')}
+          className={'dropzone conferencia-dropzone' + (arquivos.length ? ' conferencia-dropzone-compacta' : '') + (arrastando ? ' dropzone-active' : '')}
           onDragEnter={(evento) => {
             evento.preventDefault()
             if (!processando && evento.dataTransfer.types.includes('Files')) {
@@ -169,45 +212,63 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
           onDrop={receberPdf}
         >
           <span className="upload-icon"><UploadCloud size={25} aria-hidden="true" /></span>
-          <p className="dropzone-title">{arrastando ? 'Solte o PDF aqui' : 'Arraste e solte o PDF aqui'}</p>
-          <p className="dropzone-caption">Formato aceito .pdf</p>
-          <input type="file" accept=".pdf,application/pdf" hidden ref={inputPdf} onChange={(evento) => {
-            void importarPdf(evento.currentTarget.files)
+          <p className="dropzone-title">{arrastando ? 'Solte os PDFs aqui' : 'Arraste os PDFs de etiquetas aqui'}</p>
+          <input type="file" accept=".pdf,application/pdf" multiple hidden ref={inputPdf} onChange={(evento) => {
+            void importarPdfs(evento.currentTarget.files)
             evento.currentTarget.value = ''
           }} />
           <button type="button" className="button button-outline" disabled={Boolean(processando)} onClick={() => inputPdf.current?.click()}>
-            <FolderOpen size={17} aria-hidden="true" /> {lote ? 'Trocar PDF' : 'Selecionar PDF de etiquetas'}
+            <FolderOpen size={17} aria-hidden="true" /> {arquivos.length ? 'Adicionar PDFs' : 'Selecionar PDFs de etiquetas'}
           </button>
         </div>
-        {arquivo && <div className="selected-file"><FileText size={20} aria-hidden="true" /><div className="file-copy"><span className="file-name">{arquivo}</span><span className="file-meta">{lote?.pedidos.length} {lote?.pedidos.length === 1 ? 'envio encontrado' : 'envios encontrados'}</span></div></div>}
+        {arquivos.length > 0 && (
+          <details className="conferencia-detalhes">
+            <summary>{arquivos.length} {arquivos.length === 1 ? 'PDF adicionado' : 'PDFs adicionados'} <ChevronDown size={17} aria-hidden="true" /></summary>
+            <ul className="pdfs-conferencia">
+              {arquivos.map(({ id, nome, pedidos: etiquetas, paginasNaoReconhecidas }) => (
+                <li key={id}>
+                  <div className="file-copy">
+                    <span className="file-name">{nome}</span>
+                    <span className="file-meta">{etiquetas.length} {etiquetas.length === 1 ? 'envio' : 'envios'}</span>
+                    {paginasNaoReconhecidas.length > 0 && <span className="file-meta">Páginas não reconhecidas: {paginasNaoReconhecidas.join(', ')}.</span>}
+                  </div>
+                  <button className="icon-button" type="button" aria-label={'Remover ' + nome} disabled={Boolean(processando)} onClick={() => removerPdf(id)}><Trash2 size={18} aria-hidden="true" /></button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         {processando && <p className="notice notice-info" role="status"><LoaderCircle className="spinner" size={18} aria-hidden="true" /> {processando}</p>}
         {erro && <p className="notice notice-error" role="alert"><CircleAlert size={18} aria-hidden="true" /> {erro}</p>}
-        {Boolean(semQr || totalPaginasIgnoradas || semNome) && (
+        {Boolean(semQr || arquivosComAvisos.length || semNome) && (
           <div className="notice notice-warning" role="status"><CircleAlert size={18} aria-hidden="true" /><div>
             {semQr > 0 && <p>{semQr} envio(s) sem QR confirmado no PDF.</p>}
             {semNome > 0 && <p>{semNome} envio(s) sem destinatário identificado no PDF.</p>}
-            {totalPaginasIgnoradas > 0 && <p>Páginas que não puderam ser reconhecidas: {lote?.paginasNaoReconhecidas.join(', ')}.</p>}
+            {arquivosComAvisos.length > 0 && <p>Há páginas não reconhecidas. Veja os detalhes na lista de PDFs.</p>}
           </div></div>
         )}
-        {lote && faltamProdutos > 0 && (
-          <div className="conferencia-planilha">
-            <p>Há dados de produto ou quantidade pendentes em {faltamProdutos} {faltamProdutos === 1 ? 'envio' : 'envios'}. Para conferir os itens, carregue a planilha de vendas do mesmo lote.</p>
-            <input type="file" accept={'.xlsx,' + tipoExcel} hidden ref={inputExcel} onChange={(evento) => {
-              void importarExcel(evento.currentTarget.files?.[0])
-              evento.currentTarget.value = ''
-            }} />
-            <button type="button" className="button button-outline" disabled={Boolean(processando)} onClick={() => inputExcel.current?.click()}>Carregar planilha de vendas</button>
-          </div>
+        {faltamProdutos > 0 && (
+          <details className="conferencia-detalhes">
+            <summary>Vincular planilha de vendas <ChevronDown size={17} aria-hidden="true" /></summary>
+            <div className="conferencia-planilha">
+              <p>Faltam dados de produto ou quantidade em {faltamProdutos} {faltamProdutos === 1 ? 'envio' : 'envios'}.</p>
+              <input type="file" accept={'.xlsx,' + tipoExcel} hidden ref={inputExcel} onChange={(evento) => {
+                void importarExcel(evento.currentTarget.files?.[0])
+                evento.currentTarget.value = ''
+              }} />
+              <button type="button" className="button button-outline" disabled={Boolean(processando)} onClick={() => inputExcel.current?.click()}>Carregar planilha de vendas</button>
+            </div>
+          </details>
         )}
       </section>
 
-      {lote && (
+      {pedidos.length > 0 && (
         <section className="panel" aria-labelledby="titulo-bipagem" ref={areaCamera}>
           <div className="panel-heading">
             <span className="section-icon"><ScanLine size={22} aria-hidden="true" /></span>
-            <div><h2 id="titulo-bipagem">Validar pedidos</h2><p>{quantidade} de {lote.pedidos.length} envios bipados</p></div>
+            <div><h2 id="titulo-bipagem">Validar pedidos</h2><p>{quantidade} de {pedidos.length} envios bipados</p></div>
           </div>
-          <progress className="progresso-bipagem" value={quantidade} max={lote.pedidos.length} aria-label="Progresso da conferência" />
+          <progress className="progresso-bipagem" value={quantidade} max={pedidos.length} aria-label="Progresso da conferência" />
           {ativo && camera && <CameraConferencia aoLer={registrar} />}
           {bipagem && !finalizado && (
             <div className={'notice aviso-bipagem ' + ({ identificado: 'notice-success', repetido: 'notice-info', desconhecido: 'notice-warning' }[bipagem.tipo])} role="status">
@@ -227,20 +288,20 @@ export default function Conferencia({ ativo, entradas }: { ativo: boolean; entra
         </section>
       )}
 
-      {finalizado && lote && (
+      {finalizado && pedidos.length > 0 && (
         <section className="panel" aria-labelledby="titulo-resumo-conferencia">
           <div className="panel-heading">
             <span className="section-icon"><ClipboardCheck size={22} aria-hidden="true" /></span>
             <div><h2 id="titulo-resumo-conferencia" tabIndex={-1} ref={areaResumo}>Resultado da conferência</h2>
-              <p>{!pendentes && !totalPaginasIgnoradas ? 'Todos os envios do PDF foram bipados.' : 'Confira os envios pendentes e os avisos de leitura do PDF.'}</p></div>
+              <p>{!pendentes && !arquivosComAvisos.length ? 'Todos os envios do lote foram bipados.' : 'Confira os envios pendentes e os avisos de leitura.'}</p></div>
           </div>
           <dl className="conferencia-totais">
-            <div><dt>Identificados</dt><dd>{quantidade} / {lote.pedidos.length}</dd></div>
+            <div><dt>Identificados</dt><dd>{quantidade} / {pedidos.length}</dd></div>
             <div><dt>Pendentes</dt><dd>{pendentes}</dd></div>
             <div><dt>Leituras sem identificação</dt><dd>{desconhecidos}</dd></div>
           </dl>
           <ul className="lista-conferencia">
-            {lote.pedidos.map((pedido) => {
+            {pedidos.map((pedido) => {
               const confirmado = validos.current.has(pedido.envio)
               return <li key={pedido.envio}><DadosPedido pedido={pedido} produtos={produtos.get(pedido.envio)} /><span className={'estado-pedido ' + (confirmado ? 'estado-identificado' : 'estado-pendente')}>{confirmado ? 'Identificado' : 'Pendente'}</span></li>
             })}
