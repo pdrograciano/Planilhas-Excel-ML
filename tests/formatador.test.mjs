@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import ExcelJS from 'exceljs'
+import { PDFDocument } from 'pdf-lib'
 import { nomeCurto } from '../src/formatador/item.ts'
-import { formatarPlanilha, renumerarPlanilhaPorItens } from '../src/formatador/planilha.ts'
+import { formatarPlanilha, lerEtiquetas, renumerarPlanilhaPorItens } from '../src/formatador/planilha.ts'
+import { gerarPdfEtiquetas } from '../src/formatador/etiquetas.ts'
 import { exemploFicticio } from './exemplo-ficticio.mjs'
 
 async function ler(bytes) {
@@ -139,6 +141,30 @@ test('mantém pacote com três pedidos junto mesmo quando os itens pertencem a g
   assert.equal(ordenada.getCell('D2').value, 'Caneca Cerâmica')
   const corrigida = await renumerarPlanilhaPorItens(porItens)
   assert.equal(corrigida, porItens)
+})
+
+test('gera dois versos de 100 por 150 mm por envio na ordem original', async () => {
+  const original = await ler(await exemploFicticio({ comPacote: true }))
+  const vendas = original.getWorksheet('Vendas BR')
+  vendas.getCell('AT11').value = vendas.getCell('AT8').value
+  vendas.getCell('AH8').value = 'Marília de Assunção'
+  vendas.getCell('C14').value = 'Venda cancelada. Não envie.'
+  const etiquetas = await lerEtiquetas(await original.xlsx.writeBuffer())
+  assert.deepEqual(etiquetas.map(({ envio }) => envio), [
+    '70000000008', '70000000009', '70000000012', '70000000013', '70000000015', '70000000019',
+  ])
+  assert.equal(etiquetas[0].comprador, 'Marília de Assunção')
+  assert.deepEqual(etiquetas[0].produtos.map(({ sku, unidades }) => [sku, unidades]), [
+    ['SKU-08', 2], ['SKU-11', 1],
+  ])
+  assert.equal(etiquetas[4].comprador, 'Cliente do Pacote')
+  assert.deepEqual(etiquetas[4].produtos.map(({ sku }) => sku), ['SKU-16', 'SKU-17', 'SKU-18'])
+  const pdf = await PDFDocument.load(await gerarPdfEtiquetas(etiquetas))
+  assert.equal(pdf.getPageCount(), 12)
+  for (const pagina of pdf.getPages()) {
+    assert.ok(Math.abs(pagina.getWidth() * 25.4 / 72 - 100) < 0.001)
+    assert.ok(Math.abs(pagina.getHeight() * 25.4 / 72 - 150) < 0.001)
+  }
 })
 
 const caminhoExemplo = process.env.MIXBONIX_EXEMPLO

@@ -1,6 +1,6 @@
 export const tipoExcel = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-export type TarefaWorker = { tarefa: 'formatar' | 'renumerar'; bytes: ArrayBuffer }
+export type TarefaWorker = { tarefa: 'formatar' | 'renumerar' | 'etiquetas'; bytes: ArrayBuffer }
 
 type ResultadoWorker =
   | { ok: true; bytes: ArrayBuffer; porItens?: ArrayBuffer; linhas?: number }
@@ -14,8 +14,9 @@ export function nomeBaseGerado(data: number): string {
   return dia + '-' + horarioLocal.getFullYear() + '_' + hora + '_MercadoLivre_mixbonixgerator.xlsx'
 }
 
-export function nomeDaVersao(nomeBase: string, versao: 'Formatado' | 'PorItens'): string {
-  return nomeBase.replace('_MercadoLivre_', '_' + versao + '_MercadoLivre_')
+export function nomeDaVersao(nomeBase: string, versao: 'Formatado' | 'PorItens' | 'NomesSKU'): string {
+  const nome = nomeBase.replace('_MercadoLivre_', '_' + versao + '_MercadoLivre_')
+  return versao === 'NomesSKU' ? nome.replace(/\.xlsx$/i, '.pdf') : nome
 }
 
 async function executarWorker(arquivo: Blob, tarefa: TarefaWorker['tarefa']) {
@@ -60,6 +61,11 @@ export async function processarArquivo(arquivo: File) {
 export async function renumerarArquivoPorItens(arquivo: Blob): Promise<Blob> {
   const { bytes } = await executarWorker(arquivo, 'renumerar')
   return new Blob([bytes], { type: tipoExcel })
+}
+
+export async function gerarPdfNomesSku(arquivo: Blob): Promise<Blob> {
+  const { bytes } = await executarWorker(arquivo, 'etiquetas')
+  return new Blob([bytes], { type: 'application/pdf' })
 }
 
 export function baixarArquivo(arquivo: Blob, nome: string): void {

@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import type { Border, Borders, CellValue, Fill, Worksheet } from 'exceljs'
 import { larguraTexto, nomeCurto, normalizar } from './item.ts'
+import type { EtiquetaEnvio } from './etiquetas.ts'
 
 const campos = {
   unidades: { nome: 'Unidades', secao: 'vendas', posicao: 7 },
@@ -12,6 +13,8 @@ const campos = {
   estado: { nome: 'Estado', secao: 'vendas', posicao: 3 },
   pacote: { nome: 'Pacote de diversos produtos', secao: 'vendas', posicao: 5 },
   comprador: { nome: 'Comprador', secao: 'compradores', posicao: 34 },
+  sku: { nome: 'SKU', secao: 'anuncios', posicao: 22 },
+  envio: { nome: 'Identificador do envio', secao: 'envios', posicao: 46 },
 } as const
 
 type Campo = keyof typeof campos
@@ -38,9 +41,18 @@ interface Pedido {
 
 type PedidoFormatado = Pedido & { item: string }
 
+interface ReferenciaEnvio {
+  envio: string
+  venda: string
+  comprador: string
+}
+
+type PedidoRelatorio = PedidoFormatado & { sku: string; referencia: ReferenciaEnvio; cancelado: boolean }
+
 interface BlocoPedidos {
   resumo?: Pedido
-  pedidos: PedidoFormatado[]
+  referencia: ReferenciaEnvio
+  pedidos: PedidoRelatorio[]
 }
 
 export class ErroPlanilha extends Error {}
@@ -111,6 +123,8 @@ function mapearColunas(aba: Worksheet, linha: number, colunas: Cabecalhos) {
     estado: localizar('estado'),
     pacote: localizar('pacote'),
     comprador: localizar('comprador'),
+    sku: localizar('sku'),
+    envio: localizar('envio'),
   }
   const faltantes = obrigatorios.filter((campo) => resultado[campo] === undefined)
   if (faltantes.length) {
@@ -155,11 +169,19 @@ function lerBlocos(aba: Worksheet): BlocoPedidos[] {
     if (rodape.test(normalizar(identificador)) || (!identificador && !temCliente && tituloRodape.test(normalizar(titulo)))) return
 
     const data = texto(colunas.data).trim()
-    const nome = dados.trim() ? dados : texto(colunas.comprador)
+    const nomeComprador = texto(colunas.comprador).trim()
+    const nome = dados.trim() ? dados : nomeComprador
     const comprador = normalizar(nome)
-    const total = Number(normalizar(texto(colunas.estado)).match(estadoPacote)?.[1] ?? 0)
+    const estado = normalizar(texto(colunas.estado))
+    const codigoEnvio = texto(colunas.envio).trim()
+    const referencia: ReferenciaEnvio = {
+      envio: /^\d+$/.test(codigoEnvio) ? codigoEnvio : '',
+      venda: identificadorDeVenda ? identificador : '',
+      comprador: nomeComprador || dados.trim(),
+    }
+    const total = Number(estado.match(estadoPacote)?.[1] ?? 0)
     if (total > 1 && !temProduto) {
-      const bloco: BlocoPedidos = { resumo: { unidades: null, titulo, dados: nome, endereco }, pedidos: [] }
+      const bloco: BlocoPedidos = { resumo: { unidades: null, titulo, dados: nome, endereco }, referencia, pedidos: [] }
       blocos.push(bloco)
       pacote = { bloco, total, data, comprador }
       return
@@ -171,7 +193,12 @@ function lerBlocos(aba: Worksheet): BlocoPedidos[] {
     if (unidades != null && (!Number.isFinite(unidades) || unidades < 0)) {
       throw new ErroPlanilha('A quantidade na linha ' + linha.number + ' da aba Vendas BR é inválida.')
     }
-    const pedido = { unidades, titulo, dados, endereco, item: nomeCurto(titulo) }
+    const pedido: PedidoRelatorio = {
+      unidades, titulo, dados, endereco, referencia,
+      item: nomeCurto(titulo),
+      sku: texto(colunas.sku).trim(),
+      cancelado: /\bcancelad[ao]\b|\bnao envie\b/.test(estado),
+    }
     if (pacote && (temProduto || temQuantidade)) {
       const marca = normalizar(texto(colunas.pacote))
       const dataIgual = Boolean(data && data === pacote.data)
@@ -184,7 +211,7 @@ function lerBlocos(aba: Worksheet): BlocoPedidos[] {
       }
     }
     pacote = undefined
-    blocos.push({ pedidos: [pedido] })
+    blocos.push({ referencia, pedidos: [pedido] })
   })
   if (!blocos.some(({ pedidos }) => pedidos.length > 0)) {
     throw new ErroPlanilha('O relatório não contém pedidos para formatar.')
@@ -271,7 +298,7 @@ function gerarPlanilha(blocos: BlocoPedidos[]): ExcelJS.Workbook {
   return arquivo
 }
 
-export async function formatarPlanilha(original: ArrayBuffer) {
+async function lerRelatorio(original: ArrayBuffer): Promise<BlocoPedidos[]> {
   const arquivo = new ExcelJS.Workbook()
   try {
     await arquivo.xlsx.load(original)
@@ -280,7 +307,35 @@ export async function formatarPlanilha(original: ArrayBuffer) {
   }
   const aba = arquivo.worksheets.find((planilha) => normalizar(planilha.name) === 'vendas br')
   if (!aba) throw new ErroPlanilha('A aba Vendas BR não foi encontrada no arquivo.')
-  const blocos = lerBlocos(aba)
+  return lerBlocos(aba)
+}
+
+export async function lerEtiquetas(original: ArrayBuffer): Promise<EtiquetaEnvio[]> {
+  const blocos = await lerRelatorio(original)
+  const temEnvios = blocos.some(({ referencia, pedidos }) =>
+    referencia.envio || pedidos.some((pedido) => pedido.referencia.envio))
+  const etiquetas = new Map<string, EtiquetaEnvio>()
+
+  for (const [indice, bloco] of blocos.entries()) {
+    for (const pedido of bloco.pedidos) {
+      const envio = pedido.referencia.envio || bloco.referencia.envio
+      if (pedido.cancelado || (temEnvios && !envio)) continue
+
+      const venda = bloco.referencia.venda
+      const chave = envio ? 'envio:' + envio : venda ? 'venda:' + venda : 'linha:' + indice
+      const comprador = bloco.referencia.comprador || pedido.referencia.comprador
+      const etiqueta = etiquetas.get(chave) ?? { comprador, envio, produtos: [] }
+      etiqueta.comprador ||= comprador
+      etiqueta.produtos.push({ nome: pedido.titulo, unidades: pedido.unidades, sku: pedido.sku })
+      etiquetas.set(chave, etiqueta)
+    }
+  }
+  if (!etiquetas.size) throw new ErroPlanilha('O relatório não contém pedidos para imprimir etiquetas.')
+  return [...etiquetas.values()]
+}
+
+export async function formatarPlanilha(original: ArrayBuffer) {
+  const blocos = await lerRelatorio(original)
   const ordenados = blocos.map((bloco) => ({ bloco, item: bloco.pedidos.find(({ item }) => item)?.item ?? '' }))
     .sort((a, b) => Number(!a.item) - Number(!b.item) || alfabeto.compare(a.item, b.item))
     .map(({ bloco }) => bloco)

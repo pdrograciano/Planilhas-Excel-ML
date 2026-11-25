@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import ExcelJS from 'exceljs'
+import { PDFDocument } from 'pdf-lib'
 import { chromium } from 'playwright'
 import { preview } from 'vite'
 import { exemploFicticio } from './exemplo-ficticio.mjs'
@@ -109,6 +110,10 @@ test('formata, recarrega, baixa os arquivos e isola o histórico por guia', { ti
   await pagina.getByText('6 linhas de pedidos.').waitFor()
   const primeira = await baixar(pagina, resultado.getByRole('button', formato))
   const primeiraPorItem = await baixar(pagina, resultado.getByRole('button', porItem))
+  const pdfEtiquetas = { name: 'PDF nomes e sku', exact: true }
+  const pdf = await baixar(pagina, resultado.getByRole('button', pdfEtiquetas))
+  assert.equal(pdf.nome, '24-11-2026_12-34-56_NomesSKU_MercadoLivre_mixbonixgerator.pdf')
+  assert.equal((await PDFDocument.load(pdf.bytes)).getPageCount(), 12)
   assert.equal(primeira.nome, '24-11-2026_12-34-56_Formatado_MercadoLivre_mixbonixgerator.xlsx')
   assert.equal(primeiraPorItem.nome, '24-11-2026_12-34-56_PorItens_MercadoLivre_mixbonixgerator.xlsx')
   assert.equal(primeiraPorItem.bytes.equals(primeira.bytes), false)
@@ -128,6 +133,8 @@ test('formata, recarrega, baixa os arquivos e isola o histórico por guia', { ti
   await pagina.reload()
   await entradas.nth(1).waitFor()
   assert.equal(await entradas.count(), 2)
+  const pdfAposRecarregar = await baixar(pagina, entradas.first().getByRole('button', pdfEtiquetas))
+  assert.equal((await PDFDocument.load(pdfAposRecarregar.bytes)).getPageCount(), 12)
   for (const [indice, [esperado, esperadoPorItem]] of [[segunda, segundaPorItem], [primeira, primeiraPorItem]].entries()) {
     const entrada = entradas.nth(indice)
     assert.match(await entrada.innerText(), /pedidos-teste\.xlsx.*\n.*6 linhas/s)
@@ -253,6 +260,8 @@ test('funciona no celular e conserva os downloads quando o armazenamento falha',
   assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo original ML', exact: true }))).bytes.equals(original), true)
   assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo Formatado', exact: true }))).bytes.length > 0, true)
   assert.equal((await baixar(pagina, historico.getByRole('button', { name: 'Arquivo Ordenado por Itens', exact: true }))).bytes.length > 0, true)
+  const pdf = await baixar(pagina, historico.getByRole('button', { name: 'PDF nomes e sku', exact: true }))
+  assert.equal((await PDFDocument.load(pdf.bytes)).getPageCount(), 12)
   await entrada.setInputFiles({ name: 'outro-inválido.xlsx', mimeType: 'text/plain', buffer: Buffer.from('inválido') })
   await gerar.click()
   await pagina.getByRole('alert').waitFor()

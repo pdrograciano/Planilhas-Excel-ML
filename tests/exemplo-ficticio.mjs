@@ -12,16 +12,20 @@ export async function exemploFicticio({ semPedidos = false, semEnderecoFiscal = 
   aba.mergeCells('AB6:AG6')
   aba.getCell('AH6').value = 'Compradores'
   aba.mergeCells('AH6:AO6')
+  aba.getCell('AP6').value = 'Envios'
+  aba.mergeCells('AP6:AV6')
   aba.getCell('AW6').value = 'Devoluções'
   aba.mergeCells('AW6:BI6')
 
   const colunas = {
     A: semId ? null : ' N.º  de  venda ',
     G: '  UNIDADES ',
+    V: 'SKU',
     X: 'TÍTULO DO ANÚNCIO',
     AC: 'Dados pessoais ou da empresa',
     AE: semEnderecoFiscal ? null : 'Endereço',
     AK: 'Endereço',
+    AT: 'Identificador do envio',
     AW: 'Unidades',
   }
   for (const [coluna, titulo] of Object.entries(colunas)) aba.getCell(coluna + '7').value = titulo
@@ -38,10 +42,12 @@ export async function exemploFicticio({ semPedidos = false, semEnderecoFiscal = 
     for (const [linha, id, unidades, titulo, cliente, endereco] of dados) {
       if (!semId) aba.getCell('A' + linha).value = id
       aba.getCell('G' + linha).value = unidades
+      aba.getCell('V' + linha).value = 'SKU-' + String(linha).padStart(2, '0')
       aba.getCell('X' + linha).value = titulo
       aba.getCell('AC' + linha).value = cliente
       aba.getCell('AE' + linha).value = endereco
       aba.getCell('AK' + linha).value = 'Endereço de comprador fictício'
+      aba.getCell('AT' + linha).value = String(70000000000 + linha)
       aba.getCell('AW' + linha).value = 99
     }
   }
@@ -60,7 +66,8 @@ export async function exemploFicticio({ semPedidos = false, semEnderecoFiscal = 
     ]
     pacote.forEach(([id, estado, flag, unidades, titulo, cliente, endereco], indice) => {
       const linha = 15 + indice
-      const campos = { A: id, B: '15 de novembro de 2026 21:05 hs.', C: estado, E: flag, G: unidades, X: titulo, AC: cliente, AE: endereco }
+      const campos = { A: id, B: '15 de novembro de 2026 21:05 hs.', C: estado, E: flag, G: unidades, X: titulo, AC: cliente, AE: endereco,
+        V: indice ? 'SKU-' + linha : ' ', AT: indice === 0 || indice === 4 ? String(70000000000 + linha) : ' ' }
       for (const [coluna, valor] of Object.entries(campos)) aba.getCell(coluna + linha).value = valor
     })
   }

@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { baixarArquivo, nomeBaseGerado, nomeDaVersao, processarArquivo, renumerarArquivoPorItens, tipoExcel } from './formatador/arquivo.ts'
+import { baixarArquivo, gerarPdfNomesSku, nomeBaseGerado, nomeDaVersao, processarArquivo, renumerarArquivoPorItens, tipoExcel } from './formatador/arquivo.ts'
 import { excluirDoHistorico, guardarNoHistorico, guardarNumeracaoPorItens, identificadorHistorico, limparHistorico } from './historico.ts'
 import type { carregarHistorico, EntradaHistorico } from './historico.ts'
 
@@ -26,9 +26,10 @@ function tamanhoArquivo(bytes: number) {
     (divisor === 1024 ? ' KB' : ' MB')
 }
 
-function DownloadFormatada({ entrada, resultado = false }: { entrada: EntradaHistorico; resultado?: boolean }) {
+function DownloadsGerados({ entrada, resultado = false }: { entrada: EntradaHistorico; resultado?: boolean }) {
   const [corrigido, setCorrigido] = useState<Blob | null>(null)
   const [corrigindo, setCorrigindo] = useState(false)
+  const [gerandoPdf, setGerandoPdf] = useState(false)
   const [erro, setErro] = useState('')
   const nomeBase = entrada.nomeGerado ?? nomeBaseGerado(entrada.data)
   const porItens = entrada.porItens
@@ -54,6 +55,20 @@ function DownloadFormatada({ entrada, resultado = false }: { entrada: EntradaHis
     }
   }
 
+  async function baixarPdf() {
+    if (gerandoPdf) return
+    setGerandoPdf(true)
+    setErro('')
+    try {
+      const pdf = await gerarPdfNomesSku(entrada.original)
+      baixarArquivo(pdf, nomeDaVersao(nomeBase, 'NomesSKU'))
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : 'Não foi possível gerar o PDF de etiquetas.')
+    } finally {
+      setGerandoPdf(false)
+    }
+  }
+
   return (
     <>
       <button
@@ -75,6 +90,10 @@ function DownloadFormatada({ entrada, resultado = false }: { entrada: EntradaHis
           Arquivo Ordenado por Itens
         </button>
       )}
+      <button className="button button-download" type="button" onClick={baixarPdf} disabled={gerandoPdf} aria-busy={gerandoPdf}>
+        {gerandoPdf ? <LoaderCircle className="spinner" size={17} aria-hidden="true" /> : <Download size={17} aria-hidden="true" />}
+        {gerandoPdf ? 'Gerando PDF…' : 'PDF nomes e sku'}
+      </button>
       {erro && <p className="notice notice-error" role="alert">{erro}</p>}
     </>
   )
@@ -311,7 +330,7 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
                 </div>
               </div>
               <div className="download-actions">
-                <DownloadFormatada entrada={resultado} resultado />
+                <DownloadsGerados entrada={resultado} resultado />
               </div>
             </div>
           )}
@@ -364,7 +383,7 @@ export function App({ historicoInicial }: { historicoInicial: ReturnType<typeof 
                     <button className="button button-outline" type="button" onClick={() => baixarArquivo(entrada.original, entrada.nome)}>
                       <Download size={17} aria-hidden="true" /> Arquivo original ML
                     </button>
-                    <DownloadFormatada entrada={entrada} />
+                    <DownloadsGerados entrada={entrada} />
                   </div>
                   <button
                     className="icon-button history-delete"
