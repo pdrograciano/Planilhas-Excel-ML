@@ -24,7 +24,7 @@ As duas versões usam a data e a hora locais da geração. O **Arquivo Formatado
 
 Quando o Mercado Livre registra um pacote com vários produtos, a coluna **Título do anúncio** mostra **(X pedidos feitos)** na linha do comprador, seguido das linhas dos produtos. A versão por itens ordena o bloco pelo primeiro item e mantém as linhas juntas. A coluna **ORDEM** numera as linhas dos produtos.
 
-Use **PDF nomes e sku** para gerar os versos no formato **10 × 15 cm**. O PDF traz o comprador, o nome de cada produto, a quantidade e o SKU. Ele segue a sequência do relatório original e gera duas páginas iguais por envio, uma para a etiqueta e outra para a DANFE. Os produtos com o mesmo identificador de envio são reunidos na mesma página. Imprima em **tamanho real (100%)** e confira se a ordem do lote corresponde à do PDF ao recolocar as etiquetas na impressora.
+Use **PDF nomes e sku** para gerar etiquetas de **40 mm de largura por 25 mm de altura**. O PDF segue a sequência do relatório original e gera uma página por envio, com o nome do comprador, o identificador do envio, o título de cada produto, a quantidade e o SKU. Selecione o papel de **40 × 25 mm** na impressora e imprima em **tamanho real (100%)**.
 
 O ícone de sol ou lua no canto superior direito alterna o tema do site. A preferência é lembrada no navegador.
 

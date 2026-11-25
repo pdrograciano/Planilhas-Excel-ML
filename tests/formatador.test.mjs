@@ -143,12 +143,17 @@ test('mantém pacote com três pedidos junto mesmo quando os itens pertencem a g
   assert.equal(corrigida, porItens)
 })
 
-test('gera dois versos de 100 por 150 mm por envio na ordem original', async () => {
+test('gera uma etiqueta de 40 por 25 mm por envio na ordem original', async () => {
   const original = await ler(await exemploFicticio({ comPacote: true }))
   const vendas = original.getWorksheet('Vendas BR')
   vendas.getCell('AT11').value = vendas.getCell('AT8').value
   vendas.getCell('AH8').value = 'Marília de Assunção'
   vendas.getCell('C14').value = 'Venda cancelada. Não envie.'
+  vendas.getCell('AH15').value = 'Cliente do Pacote com Nome Comprido para Testar a Impressão'
+  vendas.getCell('X16').value = 'Pote de vidro quadrado empilhável com tampa para organização e conservação'
+  vendas.getCell('V16').value = 'POTE-00016-VERSAO-AZUL-MODELO-LONGO-640ML-2026-1234567890'
+  vendas.getCell('X17').value = 'Kit 2 temporizadores mecânicos de tomada'
+  vendas.getCell('X18').value = 'Timer eletrônico digital de cozinha'
   const etiquetas = await lerEtiquetas(await original.xlsx.writeBuffer())
   assert.deepEqual(etiquetas.map(({ envio }) => envio), [
     '70000000008', '70000000009', '70000000012', '70000000013', '70000000015', '70000000019',
@@ -157,13 +162,14 @@ test('gera dois versos de 100 por 150 mm por envio na ordem original', async () 
   assert.deepEqual(etiquetas[0].produtos.map(({ sku, unidades }) => [sku, unidades]), [
     ['SKU-08', 2], ['SKU-11', 1],
   ])
-  assert.equal(etiquetas[4].comprador, 'Cliente do Pacote')
-  assert.deepEqual(etiquetas[4].produtos.map(({ sku }) => sku), ['SKU-16', 'SKU-17', 'SKU-18'])
+  assert.equal(etiquetas[4].comprador, vendas.getCell('AH15').value)
+  assert.deepEqual(etiquetas[4].produtos.map(({ sku }) => sku), [vendas.getCell('V16').value, 'SKU-17', 'SKU-18'])
   const pdf = await PDFDocument.load(await gerarPdfEtiquetas(etiquetas))
-  assert.equal(pdf.getPageCount(), 12)
+  assert.equal(pdf.getPageCount(), etiquetas.length)
+  assert.equal(pdf.catalog.getViewerPreferences().getPrintScaling(), 'None')
   for (const pagina of pdf.getPages()) {
-    assert.ok(Math.abs(pagina.getWidth() * 25.4 / 72 - 100) < 0.001)
-    assert.ok(Math.abs(pagina.getHeight() * 25.4 / 72 - 150) < 0.001)
+    assert.ok(Math.abs(pagina.getWidth() * 25.4 / 72 - 40) < 0.001)
+    assert.ok(Math.abs(pagina.getHeight() * 25.4 / 72 - 25) < 0.001)
   }
 })
 

@@ -22,9 +22,9 @@ interface Trecho {
   divisoria: boolean
 }
 
-const largura = 100 * 72 / 25.4
-const altura = 150 * 72 / 25.4
-const margem = 17
+const largura = 40 * 72 / 25.4
+const altura = 25 * 72 / 25.4
+const margem = 3.5
 const larguraTexto = largura - 2 * margem
 const quantidades = new Intl.NumberFormat('pt-BR')
 
@@ -46,15 +46,15 @@ function quebrarLinhas(texto: string, fonte: PDFFont, tamanho: number): string[]
       linha = adicionada
       continue
     }
-    if (linha) linhas.push(linha)
-    linha = ''
     if (cabe(palavra)) {
+      if (linha) linhas.push(linha)
       linha = palavra
       continue
     }
+    if (linha) linha += ' '
     for (const letra of palavra) {
       if (linha && !cabe(linha + letra)) {
-        linhas.push(linha)
+        linhas.push(linha.trimEnd())
         linha = ''
       }
       linha += letra
@@ -66,27 +66,21 @@ function quebrarLinhas(texto: string, fonte: PDFFont, tamanho: number): string[]
 
 function comporEtiqueta(etiqueta: EtiquetaEnvio, normal: PDFFont, negrito: PDFFont, caracteres: Set<number>, escala: number) {
   const trecho = (texto: string, fonte: PDFFont, pontos: number, intervalo = 0, divisoria = false): Trecho => {
-    const tamanho = Math.max(7, pontos * escala)
+    const tamanho = Math.max(4.5, pontos * escala)
     return {
       linhas: quebrarLinhas(textoImprimivel(texto, caracteres), fonte, tamanho),
-      fonte, tamanho, entrelinha: tamanho * 1.23, intervalo: intervalo * escala, divisoria,
+      fonte, tamanho, entrelinha: tamanho * (1.05 + .07 * escala), intervalo: intervalo * escala, divisoria,
     }
   }
-  const trechos = [
-    trecho('COMPRADOR', negrito, 9, 3),
-    trecho(etiqueta.comprador || 'Não informado', negrito, 19, 15, true),
-    trecho(etiqueta.produtos.length === 1 ? 'PRODUTO' : 'PRODUTOS', negrito, 9, 5),
-  ]
-  for (const [indice, produto] of etiqueta.produtos.entries()) {
-    const quantidade = produto.unidades === null ? 'não informada' : quantidades.format(produto.unidades)
-    const separar = indice < etiqueta.produtos.length - 1
+  const trechos = [trecho(etiqueta.comprador || 'Comprador não informado', negrito, 8.5, 3, true)]
+  for (const produto of etiqueta.produtos) {
+    const quantidade = produto.unidades === null ? 's/ info' : quantidades.format(produto.unidades)
     trechos.push(
-      trecho(produto.nome || 'Produto não informado', negrito, 15, 5),
-      trecho('Quantidade: ' + quantidade, negrito, 12, 3),
-      trecho('SKU: ' + (produto.sku || 'não informado'), normal, 12, separar ? 13 : 9, separar),
+      trecho(produto.nome || 'Produto não informado', negrito, 7.6),
+      trecho('Qtd: ' + quantidade + ' | SKU: ' + (produto.sku || 's/ info'), normal, 6.8, 2),
     )
   }
-  if (etiqueta.envio) trechos.push(trecho('Envio: ' + etiqueta.envio, normal, 9))
+  if (etiqueta.envio) trechos.push(trecho('Envio: ' + etiqueta.envio, normal, 6.2))
   return trechos
 }
 
@@ -100,7 +94,7 @@ export async function gerarPdfEtiquetas(etiquetas: EtiquetaEnvio[]): Promise<Arr
 
   for (const [indice, etiqueta] of etiquetas.entries()) {
     let layout: Trecho[] | undefined
-    for (const escala of [1, .9, .8, .7, .6, .5]) {
+    for (const escala of [1, .95, .9, .85, .8, .75, .7, .65, .6, .55]) {
       const trechos = comporEtiqueta(etiqueta, normal, negrito, caracteres, escala)
       const espaco = trechos.reduce((total, trecho) => total + trecho.linhas.length * trecho.entrelinha + trecho.intervalo, 0)
       if (espaco <= altura - 2 * margem) {
@@ -108,23 +102,20 @@ export async function gerarPdfEtiquetas(etiquetas: EtiquetaEnvio[]): Promise<Arr
         break
       }
     }
-    if (!layout) throw new Error('O pedido ' + (etiqueta.envio || indice + 1) + ' tem itens demais para caber em uma etiqueta de 10 × 15 cm.')
+    if (!layout) throw new Error('Os dados do envio ' + (etiqueta.envio || indice + 1) + ' não cabem em uma etiqueta de 4 × 2,5 cm.')
 
-    // O conteúdo é o mesmo no verso da etiqueta de envio e no verso da DANFE.
-    for (let via = 0; via < 2; via++) {
-      const pagina = pdf.addPage([largura, altura])
-      let y = altura - margem
-      for (const trecho of layout) {
-        for (const linha of trecho.linhas) {
-          pagina.drawText(linha, { x: margem, y: y - trecho.tamanho, size: trecho.tamanho, font: trecho.fonte })
-          y -= trecho.entrelinha
-        }
-        if (trecho.divisoria) {
-          const meio = y - trecho.intervalo / 2
-          pagina.drawLine({ start: { x: margem, y: meio }, end: { x: largura - margem, y: meio }, thickness: .5 })
-        }
-        y -= trecho.intervalo
+    const pagina = pdf.addPage([largura, altura])
+    let y = altura - margem
+    for (const trecho of layout) {
+      for (const linha of trecho.linhas) {
+        pagina.drawText(linha, { x: margem, y: y - trecho.tamanho, size: trecho.tamanho, font: trecho.fonte })
+        y -= trecho.entrelinha
       }
+      if (trecho.divisoria) {
+        const meio = y - trecho.intervalo / 2
+        pagina.drawLine({ start: { x: margem, y: meio }, end: { x: largura - margem, y: meio }, thickness: .3 })
+      }
+      y -= trecho.intervalo
     }
   }
   return new Uint8Array(await pdf.save()).buffer
